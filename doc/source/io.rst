@@ -2101,7 +2101,8 @@ any pickled pandas object (or any other pickled object) from file:
 
 .. warning::
 
-   In 0.13, pickle preserves compatibility with pickles created prior to 0.13. These must
+   Several internal refactorings, 0.13 (:ref:`Series Refactoring <whatsnew_0130.refactoring>`), and 0.15 (:ref:`Index Refactoring <whatsnew_0150.refactoring>`),
+   preserve compatibility with pickles created prior to these versions. However, these must
    be read with ``pd.read_pickle``, rather than the default python ``pickle.load``.
    See `this question <http://stackoverflow.com/questions/20444593/pandas-compiled-from-source-default-pickle-behavior-changed>`__
    for a detailed explanation.
@@ -2198,12 +2199,9 @@ the high performance HDF5 format using the excellent `PyTables
 <http://www.pytables.org/>`__ library. See the :ref:`cookbook <cookbook.hdf>`
 for some advanced strategies
 
-.. note::
+.. warning::
 
-   ``PyTables`` 3.0.0 was recently released to enable support for Python 3.
-   pandas should be fully compatible (and previously written stores should be
-   backwards compatible) with all ``PyTables`` >= 2.3. For ``python >= 3.2``,
-   ``pandas >= 0.12.0`` is required for compatibility.
+   As of version 0.15.0, pandas requires ``PyTables`` >= 3.0.0. Stores written with prior versions of pandas / ``PyTables`` >= 2.3 are fully compatible (this was the previous minimum ``PyTables`` required version).
 
 .. ipython:: python
    :suppress:
@@ -2724,7 +2722,7 @@ The default is 50,000 rows returned in a chunk.
 
    .. code-block:: python
 
-      for df in read_hdf('store.h5','df', chunsize=3):
+      for df in read_hdf('store.h5','df', chunksize=3):
           print(df)
 
 Note, that the chunksize keyword applies to the **source** rows. So if you
@@ -3269,6 +3267,12 @@ the database using :func:`~pandas.DataFrame.to_sql`.
 
     data.to_sql('data', engine)
 
+With some databases, writing large DataFrames can result in errors due to packet size limitations being exceeded. This can be avoided by setting the ``chunksize`` parameter when calling ``to_sql``.  For example, the following writes ``data`` to the database in batches of 1000 rows at a time:
+
+.. ipython:: python
+
+    data.to_sql('data', engine, chunksize=1000)
+
 .. note::
 
     Due to the limited support for timedelta's in the different database
@@ -3529,6 +3533,13 @@ outside of this range, the data is cast to ``int16``.
    Conversion from ``int64`` to ``float64`` may result in a loss of precision
    if ``int64`` values are larger than 2**53.
 
+.. warning::
+  :class:`~pandas.io.stata.StataWriter`` and
+  :func:`~pandas.core.frame.DataFrame.to_stata` only support fixed width
+  strings containing up to 244 characters, a limitation imposed by the version
+  115 dta file format. Attempting to write *Stata* dta files with strings
+  longer than 244 characters raises a ``ValueError``.
+
 
 .. _io.stata_reader:
 
@@ -3552,6 +3563,13 @@ The parameter ``convert_categoricals`` indicates whether value labels should be
 read and used to create a ``Categorical`` variable from them. Value labels can
 also be retrieved by the function ``variable_labels``, which requires data to be
 called before (see ``pandas.io.stata.StataReader``).
+
+The parameter ``convert_missing`` indicates whether missing value
+representations in Stata should be preserved.  If ``False`` (the default),
+missing values are represented as ``np.nan``.  If ``True``, missing values are
+represented using ``StataMissingValue`` objects, and columns containing missing
+values will have ``dtype`` set to ``object``.
+
 
 The StataReader supports .dta Formats 104, 105, 108, 113-115 and 117.
 Alternatively, the function :func:`~pandas.io.stata.read_stata` can be used

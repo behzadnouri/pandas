@@ -90,6 +90,7 @@ By using some special functions:
     df['group'] = pd.cut(df.value, range(0, 105, 10), right=False, labels=labels)
     df.head(10)
 
+See :ref:`documentation <reshaping.tile.cut>` for :func:`~pandas.cut`.
 
 `Categoricals` have a specific ``category`` :ref:`dtype <basics.dtypes>`:
 
@@ -228,11 +229,11 @@ Appending levels can be done by assigning a levels list longer than the current 
     Adding levels in other positions can be done with ``.reorder_levels(<levels_including_new>)``.
 
 Removing a level is also possible, but only the last level(s) can be removed by assigning a
-shorter list than current levels. Values which are omitted are replaced by `np.nan`.
+shorter list than current levels. Values which are omitted are replaced by ``np.nan``.
 
 .. ipython:: python
 
-    s.levels = [1,2]
+    s.cat.levels = [1,2]
     s
 
 .. note::
@@ -322,7 +323,7 @@ old levels:
 .. ipython:: python
 
     s3 = pd.Series(pd.Categorical(["a","b","d"]))
-    s3.cat.reorder_levels(["a","b","c",d"])
+    s3.cat.reorder_levels(["a","b","c","d"])
     s3
 
 
@@ -330,6 +331,57 @@ Operations
 ----------
 
 The following operations are possible with categorical data:
+
+Comparing `Categoricals` with other objects is possible in two cases:
+
+ * comparing a `Categorical` to another `Categorical`, when `level` and `ordered` is the same or
+ * comparing a `Categorical` to a scalar.
+
+All other comparisons will raise a TypeError.
+
+.. ipython:: python
+
+    cat = pd.Series(pd.Categorical([1,2,3], levels=[3,2,1]))
+    cat_base = pd.Series(pd.Categorical([2,2,2], levels=[3,2,1]))
+    cat_base2 = pd.Series(pd.Categorical([2,2,2]))
+
+    cat
+    cat_base
+    cat_base2
+
+Comparing to a categorical with the same levels and ordering or to a scalar works:
+
+.. ipython:: python
+
+    cat > cat_base
+    cat > 2
+
+This doesn't work because the levels are not the same:
+
+.. ipython:: python
+
+    try:
+        cat > cat_base2
+    except TypeError as e:
+         print("TypeError: " + str(e))
+
+.. note::
+
+    Comparisons with `Series`, `np.array` or a `Categorical` with different levels or ordering
+    will raise an `TypeError` because custom level ordering would result in two valid results:
+    one with taking in account the ordering and one without. If you want to compare a `Categorical`
+    with such a type, you need to be explicit and convert the `Categorical` to values:
+
+.. ipython:: python
+
+    base = np.array([1,2,3])
+
+    try:
+        cat > base
+    except TypeError as e:
+         print("TypeError: " + str(e))
+
+    np.asarray(cat) > base
 
 Getting the minimum and maximum, if the categorical is ordered:
 
@@ -489,62 +541,38 @@ but the levels of these `Categoricals` need to be the same:
 
 .. ipython:: python
 
-        cat = pd.Categorical(["a","b"], levels=["a","b"])
-        vals = [1,2]
-        df = pd.DataFrame({"cats":cat, "vals":vals})
-        res = pd.concat([df,df])
-        res
-        res.dtypes
+    cat = pd.Categorical(["a","b"], levels=["a","b"])
+    vals = [1,2]
+    df = pd.DataFrame({"cats":cat, "vals":vals})
+    res = pd.concat([df,df])
+    res
+    res.dtypes
 
-        df_different = df.copy()
-        df_different["cats"].cat.levels = ["a","b","c"]
+In this case the levels are not the same and so an error is raised:
 
-        try:
-            pd.concat([df,df])
-        except ValueError as e:
-            print("ValueError: " + str(e))
+.. ipython:: python
+
+    df_different = df.copy()
+    df_different["cats"].cat.levels = ["a","b","c"]
+    try:
+        pd.concat([df,df_different])
+    except ValueError as e:
+        print("ValueError: " + str(e))
 
 The same applies to ``df.append(df)``.
 
 Getting Data In/Out
 -------------------
 
-Writing data (`Series`, `Frames`) to a HDF store and reading it in entirety works. Querying the HDF
-store does not yet work.
-
-.. ipython:: python
-   :suppress:
-
-    hdf_file = "test.h5"
-
-.. ipython:: python
-
-    hdf_file = "test.h5"
-    s = pd.Series(pd.Categorical(['a', 'b', 'b', 'a', 'a', 'c'], levels=['a','b','c','d']))
-    df = pd.DataFrame({"s":s, "vals":[1,2,3,4,5,6]})
-    df.to_hdf(hdf_file, "frame")
-    df2 = pd.read_hdf(hdf_file, "frame")
-    df2
-    try:
-        pd.read_hdf(hdf_file, "frame", where = ['index>2'])
-    except TypeError as e:
-        print("TypeError: " + str(e))
-
-.. ipython:: python
-   :suppress:
-
-    try:
-        os.remove(hdf_file)
-    except:
-        pass
-
+Writing data (`Series`, `Frames`) to a HDF store that contains a ``category`` dtype will currently
+raise ``NotImplementedError``.
 
 Writing to a CSV file will convert the data, effectively removing any information about the
 `Categorical` (levels and ordering). So if you read back the CSV file you have to convert the
 relevant columns back to `category` and assign the right levels and level ordering.
 
 .. ipython:: python
-   :suppress:
+    :suppress:
 
     from pandas.compat import StringIO
 
@@ -576,7 +604,7 @@ default not included in computations. See the :ref:`Missing Data section
 <missing_data>`
 
 There are two ways a `np.nan` can be represented in `Categorical`: either the value is not
-available or `np.nan` is a valid level.
+available ("missing value") or `np.nan` is a valid level.
 
 .. ipython:: python
 
@@ -588,8 +616,24 @@ available or `np.nan` is a valid level.
     s2.cat.levels = [1,2,np.nan]
     s2
     # three levels, np.nan included
-    # Note: as int arrays can't hold NaN the levels were converted to float
+    # Note: as int arrays can't hold NaN the levels were converted to object
     s2.cat.levels
+
+.. note::
+    Missing value methods like ``isnull`` and ``fillna`` will take both missing values as well as
+    `np.nan` levels into account:
+
+.. ipython:: python
+
+    c = pd.Categorical(["a","b",np.nan])
+    c.levels = ["a","b",np.nan]
+    # will be inserted as a NA level:
+    c[0] = np.nan
+    s = pd.Series(c)
+    s
+    pd.isnull(s)
+    s.fillna("a")
+
 
 Gotchas
 -------
@@ -607,7 +651,7 @@ object and not as a low level `numpy` array dtype. This leads to some problems.
     try:
         np.dtype("category")
     except TypeError as e:
-         print("TypeError: " + str(e))
+        print("TypeError: " + str(e))
 
     dtype = pd.Categorical(["a"]).dtype
     try:
@@ -615,7 +659,10 @@ object and not as a low level `numpy` array dtype. This leads to some problems.
     except TypeError as e:
          print("TypeError: " + str(e))
 
-    # dtype comparisons work:
+Dtype comparisons work:
+
+.. ipython:: python
+
     dtype == np.str_
     np.str_ == dtype
 

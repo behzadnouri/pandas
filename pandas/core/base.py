@@ -8,7 +8,13 @@ import numpy as np
 from pandas.core import common as com
 import pandas.core.nanops as nanops
 import pandas.tslib as tslib
-from pandas.util.decorators import cache_readonly
+import pandas.lib as lib
+from pandas.util.decorators import Appender, cache_readonly
+
+
+_shared_docs = dict()
+_indexops_doc_kwargs = dict(klass='IndexOpsMixin', inplace='')
+
 
 class StringMixin(object):
 
@@ -100,6 +106,62 @@ class PandasObject(StringMixin):
         else:
             self._cache.pop(key, None)
 
+class PandasDelegate(PandasObject):
+    """ an abstract base class for delegating methods/properties """
+
+    def _delegate_property_get(self, name, *args, **kwargs):
+        raise TypeError("You cannot access the property {name}".format(name=name))
+
+    def _delegate_property_set(self, name, value, *args, **kwargs):
+        raise TypeError("The property {name} cannot be set".format(name=name))
+
+    def _delegate_method(self, name, *args, **kwargs):
+        raise TypeError("You cannot call method {name}".format(name=name))
+
+    @classmethod
+    def _add_delegate_accessors(cls, delegate, accessors, typ):
+        """
+        add accessors to cls from the delegate class
+
+        Parameters
+        ----------
+        cls : the class to add the methods/properties to
+        delegate : the class to get methods/properties & doc-strings
+        acccessors : string list of accessors to add
+        typ : 'property' or 'method'
+
+        """
+
+        def _create_delegator_property(name):
+
+            def _getter(self):
+                return self._delegate_property_get(name)
+            def _setter(self, new_values):
+                return self._delegate_property_set(name, new_values)
+
+            _getter.__name__ = name
+            _setter.__name__ = name
+
+            return property(fget=_getter, fset=_setter, doc=getattr(delegate,name).__doc__)
+
+        def _create_delegator_method(name):
+
+            def f(self, *args, **kwargs):
+                return self._delegate_method(name, *args, **kwargs)
+
+            f.__name__ = name
+            f.__doc__ = getattr(delegate,name).__doc__
+
+            return f
+
+        for name in accessors:
+
+            if typ == 'property':
+                f = _create_delegator_property(name)
+            else:
+                f = _create_delegator_method(name)
+
+            setattr(cls,name,f)
 
 class FrozenList(PandasObject, list):
 
@@ -205,46 +267,116 @@ class FrozenNDArray(PandasObject, np.ndarray):
                                  quote_strings=True)
         return "%s(%s, dtype='%s')" % (type(self).__name__, prepr, self.dtype)
 
+def _unbox(func):
+    @Appender(func.__doc__)
+    def f(self, *args, **kwargs):
+        result = func(self.values, *args, **kwargs)
+        from pandas.core.index import Index
+        if isinstance(result, (np.ndarray, com.ABCSeries, Index)) and result.ndim == 0:
+            # return NumPy type
+            return result.dtype.type(result.item())
+        else:  # pragma: no cover
+            return result
+    f.__name__ = func.__name__
+    return f
+
 class IndexOpsMixin(object):
     """ common ops mixin to support a unified inteface / docs for Series / Index """
 
-    def _is_allowed_index_op(self, name):
-        if not self._allow_index_ops:
-            raise TypeError("cannot perform an {name} operations on this type {typ}".format(
-                name=name,typ=type(self._get_access_object())))
+    # ndarray compatibility
+    __array_priority__ = 1000
 
-    def _ops_compat(self, name, op_accessor):
-
-        obj = self._get_access_object()
-        try:
-            return self._wrap_access_object(getattr(obj,op_accessor))
-        except AttributeError:
-            raise TypeError("cannot perform an {name} operations on this type {typ}".format(
-                name=name,typ=type(obj)))
-
-    def _get_access_object(self):
-        if isinstance(self, com.ABCSeries):
-            return self.index
+    def transpose(self):
+        """ return the transpose, which is by definition self """
         return self
 
-    def _wrap_access_object(self, obj):
-        # we may need to coerce the input as we don't want non int64 if
-        # we have an integer result
-        if hasattr(obj,'dtype') and com.is_integer_dtype(obj):
-            obj = obj.astype(np.int64)
+    T = property(transpose, doc="return the transpose, which is by definition self")
 
-        if isinstance(self, com.ABCSeries):
-            return self._constructor(obj,index=self.index).__finalize__(self)
+    @property
+    def shape(self):
+        """ return a tuple of the shape of the underlying data """
+        return self._data.shape
 
-        return obj
+    @property
+    def ndim(self):
+        """ return the number of dimensions of the underlying data, by definition 1 """
+        return 1
+
+    def item(self):
+        """ return the first element of the underlying data as a python scalar """
+        try:
+            return self.values.item()
+        except IndexError:
+            # copy numpy's message here because Py26 raises an IndexError
+            raise ValueError('can only convert an array of size 1 to a '
+                             'Python scalar')
+
+    @property
+    def data(self):
+        """ return the data pointer of the underlying data """
+        return self.values.data
+
+    @property
+    def itemsize(self):
+        """ return the size of the dtype of the item of the underlying data """
+        return self.values.itemsize
+
+    @property
+    def nbytes(self):
+        """ return the number of bytes in the underlying data """
+        return self.values.nbytes
+
+    @property
+    def strides(self):
+        """ return the strides of the underlying data """
+        return self.values.strides
+
+    @property
+    def size(self):
+        """ return the number of elements in the underlying data """
+        return self.values.size
+
+    @property
+    def flags(self):
+        """ return the ndarray.flags for the underlying data """
+        return self.values.flags
+
+    @property
+    def base(self):
+        """ return the base object if the memory of the underlying data is shared """
+        return self.values.base
 
     def max(self):
         """ The maximum value of the object """
         return nanops.nanmax(self.values)
 
+    def argmax(self, axis=None):
+        """
+        return a ndarray of the maximum argument indexer
+
+        See also
+        --------
+        numpy.ndarray.argmax
+        """
+        return nanops.nanargmax(self.values)
+
     def min(self):
         """ The minimum value of the object """
         return nanops.nanmin(self.values)
+
+    def argmin(self, axis=None):
+        """
+        return a ndarray of the minimum argument indexer
+
+        See also
+        --------
+        numpy.ndarray.argmin
+        """
+        return nanops.nanargmin(self.values)
+
+    def hasnans(self):
+        """ return if I have any nans; enables various perf speedups """
+        return com.isnull(self).any()
 
     def value_counts(self, normalize=False, sort=True, ascending=False,
                      bins=None, dropna=True):
@@ -340,67 +472,76 @@ class IndexOpsMixin(object):
         from pandas.core.algorithms import factorize
         return factorize(self, sort=sort, na_sentinel=na_sentinel)
 
-# facilitate the properties on the wrapped ops
-def _field_accessor(name, docstring=None):
-    op_accessor = '_{0}'.format(name)
-    def f(self):
-        return self._ops_compat(name,op_accessor)
+    def searchsorted(self, key, side='left'):
+        """ np.ndarray searchsorted compat """
 
-    f.__name__ = name
-    f.__doc__ = docstring
-    return property(f)
+        ### FIXME in GH7447
+        #### needs coercion on the key (DatetimeIndex does alreay)
+        #### needs tests/doc-string
+        return self.values.searchsorted(key, side=side)
+
+    _shared_docs['drop_duplicates'] = (
+        """Return %(klass)s with duplicate values removed
+
+        Parameters
+        ----------
+        take_last : boolean, default False
+            Take the last observed index in a group. Default first
+        %(inplace)s
+
+        Returns
+        -------
+        deduplicated : %(klass)s
+        """)
+
+    @Appender(_shared_docs['drop_duplicates'] % _indexops_doc_kwargs)
+    def drop_duplicates(self, take_last=False, inplace=False):
+        duplicated = self.duplicated(take_last=take_last)
+        result = self[~duplicated.values]
+        if inplace:
+            return self._update_inplace(result)
+        else:
+            return result
+
+    _shared_docs['duplicated'] = (
+        """Return boolean %(klass)s denoting duplicate values
+
+        Parameters
+        ----------
+        take_last : boolean, default False
+            Take the last observed index in a group. Default first
+
+        Returns
+        -------
+        duplicated : %(klass)s
+        """)
+
+    @Appender(_shared_docs['duplicated'] % _indexops_doc_kwargs)
+    def duplicated(self, take_last=False):
+        keys = com._ensure_object(self.values)
+        duplicated = lib.duplicated(keys, take_last=take_last)
+        try:
+            return self._constructor(duplicated,
+                                     index=self.index).__finalize__(self)
+        except AttributeError:
+            from pandas.core.index import Index
+            return Index(duplicated)
+
+    #----------------------------------------------------------------------
+    # unbox reductions
+
+    all = _unbox(np.ndarray.all)
+    any = _unbox(np.ndarray.any)
+
+    #----------------------------------------------------------------------
+    # abstracts
+
+    def _update_inplace(self, result):
+        raise NotImplementedError
+
 
 class DatetimeIndexOpsMixin(object):
     """ common ops mixin to support a unified inteface datetimelike Index """
-
-    def _is_allowed_datetime_index_op(self, name):
-        if not self._allow_datetime_index_ops:
-            raise TypeError("cannot perform an {name} operations on this type {typ}".format(
-                name=name,typ=type(self._get_access_object())))
-
-    def _is_allowed_period_index_op(self, name):
-        if not self._allow_period_index_ops:
-            raise TypeError("cannot perform an {name} operations on this type {typ}".format(
-                name=name,typ=type(self._get_access_object())))
-
-    def _ops_compat(self, name, op_accessor):
-
-        from pandas.tseries.index import DatetimeIndex
-        from pandas.tseries.period import PeriodIndex
-        obj = self._get_access_object()
-        if isinstance(obj, DatetimeIndex):
-            self._is_allowed_datetime_index_op(name)
-        elif isinstance(obj, PeriodIndex):
-            self._is_allowed_period_index_op(name)
-        try:
-            return self._wrap_access_object(getattr(obj,op_accessor))
-        except AttributeError:
-            raise TypeError("cannot perform an {name} operations on this type {typ}".format(
-                name=name,typ=type(obj)))
-
-    date = _field_accessor('date','Returns numpy array of datetime.date. The date part of the Timestamps')
-    time = _field_accessor('time','Returns numpy array of datetime.time. The time part of the Timestamps')
-    year = _field_accessor('year', "The year of the datetime")
-    month = _field_accessor('month', "The month as January=1, December=12")
-    day = _field_accessor('day', "The days of the datetime")
-    hour = _field_accessor('hour', "The hours of the datetime")
-    minute = _field_accessor('minute', "The minutes of the datetime")
-    second = _field_accessor('second', "The seconds of the datetime")
-    microsecond = _field_accessor('microsecond', "The microseconds of the datetime")
-    nanosecond = _field_accessor('nanosecond', "The nanoseconds of the datetime")
-    weekofyear = _field_accessor('weekofyear', "The week ordinal of the year")
-    week = weekofyear
-    dayofweek = _field_accessor('dayofweek', "The day of the week with Monday=0, Sunday=6")
-    weekday = dayofweek
-    dayofyear = _field_accessor('dayofyear', "The ordinal day of the year")
-    quarter = _field_accessor('quarter', "The quarter of the date")
-    qyear = _field_accessor('qyear')
-    is_month_start = _field_accessor('is_month_start', "Logical indicating if first day of month (defined by frequency)")
-    is_month_end = _field_accessor('is_month_end', "Logical indicating if last day of month (defined by frequency)")
-    is_quarter_start = _field_accessor('is_quarter_start', "Logical indicating if first day of quarter (defined by frequency)")
-    is_quarter_end = _field_accessor('is_quarter_end', "Logical indicating if last day of quarter (defined by frequency)")
-    is_year_start = _field_accessor('is_year_start', "Logical indicating if first day of year (defined by frequency)")
-    is_year_end = _field_accessor('is_year_end', "Logical indicating if last day of year (defined by frequency)")
 
     def __iter__(self):
         return (self._box_func(v) for v in self.asi8)
@@ -416,7 +557,6 @@ class DatetimeIndexOpsMixin(object):
         """
         apply box func to passed values
         """
-        import pandas.lib as lib
         return lib.map_infer(values, self._box_func)
 
     @cache_readonly
@@ -431,13 +571,17 @@ class DatetimeIndexOpsMixin(object):
 
     def tolist(self):
         """
-        See ndarray.tolist
+        return a list of the underlying data
         """
         return list(self.asobject)
 
     def min(self, axis=None):
         """
-        Overridden ndarray.min to return an object
+        return the minimum value of the Index
+
+        See also
+        --------
+        numpy.ndarray.min
         """
         try:
             i8 = self.asi8
@@ -456,9 +600,31 @@ class DatetimeIndexOpsMixin(object):
         except ValueError:
             return self._na_value
 
+    def argmin(self, axis=None):
+        """
+        return a ndarray of the minimum argument indexer
+
+        See also
+        --------
+        numpy.ndarray.argmin
+        """
+
+        i8 = self.asi8
+        if self.hasnans:
+            mask = i8 == tslib.iNaT
+            if mask.all():
+                return -1
+            i8 = i8.copy()
+            i8[mask] = np.iinfo('int64').max
+        return i8.argmin()
+
     def max(self, axis=None):
         """
-        Overridden ndarray.max to return an object
+        return the maximum value of the Index
+
+        See also
+        --------
+        numpy.ndarray.max
         """
         try:
             i8 = self.asi8
@@ -476,6 +642,24 @@ class DatetimeIndexOpsMixin(object):
             return self._box_func(max_stamp)
         except ValueError:
             return self._na_value
+
+    def argmax(self, axis=None):
+        """
+        return a ndarray of the maximum argument indexer
+
+        See also
+        --------
+        numpy.ndarray.argmax
+        """
+
+        i8 = self.asi8
+        if self.hasnans:
+            mask = i8 == tslib.iNaT
+            if mask.all():
+                return -1
+            i8 = i8.copy()
+            i8[mask] = 0
+        return i8.argmax()
 
     @property
     def _formatter_func(self):

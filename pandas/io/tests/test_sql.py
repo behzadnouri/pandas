@@ -36,7 +36,6 @@ from pandas.core.datetools import format as date_format
 
 import pandas.io.sql as sql
 import pandas.util.testing as tm
-from pandas import _np_version_under1p7
 
 
 try:
@@ -456,6 +455,14 @@ class _TestSQLApi(PandasSQLTest):
         result.index.name = None
         tm.assert_frame_equal(result, self.test_frame1)
 
+    def test_roundtrip_chunksize(self):
+        sql.to_sql(self.test_frame1, 'test_frame_roundtrip', con=self.conn, 
+            index=False, flavor='sqlite', chunksize=2)
+        result = sql.read_sql_query(
+            'SELECT * FROM test_frame_roundtrip',
+            con=self.conn)
+        tm.assert_frame_equal(result, self.test_frame1)        
+
     def test_execute_sql(self):
         # drop_sql = "DROP TABLE IF EXISTS test"  # should already be done
         iris_results = sql.execute("SELECT * FROM iris", con=self.conn)
@@ -509,8 +516,6 @@ class _TestSQLApi(PandasSQLTest):
 
     def test_timedelta(self):
         # see #6921
-        tm._skip_if_not_numpy17_friendly()
-
         df = to_timedelta(Series(['00:00:01', '00:00:03'], name='foo')).to_frame()
         with tm.assert_produces_warning(UserWarning):
             df.to_sql('test_timedelta', self.conn)
@@ -584,6 +589,15 @@ class _TestSQLApi(PandasSQLTest):
                           'test_index_label', self.conn, if_exists='replace',
                           index_label='C')
 
+    def test_multiindex_roundtrip(self):
+        df = DataFrame.from_records([(1,2.1,'line1'), (2,1.5,'line2')], 
+                                    columns=['A','B','C'], index=['A','B'])
+
+        df.to_sql('test_multiindex_roundtrip', self.conn)
+        result = sql.read_sql_query('SELECT * FROM test_multiindex_roundtrip', 
+                                    self.conn, index_col=['A','B'])
+        tm.assert_frame_equal(df, result, check_index_type=True)        
+
     def test_integer_col_names(self):
         df = DataFrame([[1, 2], [3, 4]], columns=[0, 1])
         sql.to_sql(df, "test_frame_integer_col_names", self.conn,
@@ -644,9 +658,7 @@ class TestSQLApi(_TestSQLApi):
             "SELECT * FROM iris", self.conn)
         iris_frame2 = sql.read_sql(
             "SELECT * FROM iris", self.conn)
-        tm.assert_frame_equal(iris_frame1, iris_frame2,
-                              "read_sql and read_sql_query have not the same"
-                              " result with a query")
+        tm.assert_frame_equal(iris_frame1, iris_frame2)
 
         iris_frame1 = sql.read_sql_table('iris', self.conn)
         iris_frame2 = sql.read_sql('iris', self.conn)
@@ -700,9 +712,7 @@ class TestSQLLegacyApi(_TestSQLApi):
     def test_read_sql_delegate(self):
         iris_frame1 = sql.read_sql_query("SELECT * FROM iris", self.conn)
         iris_frame2 = sql.read_sql("SELECT * FROM iris", self.conn)
-        tm.assert_frame_equal(iris_frame1, iris_frame2,
-                              "read_sql and read_sql_query have not the same"
-                              " result with a query")
+        tm.assert_frame_equal(iris_frame1, iris_frame2)
 
         self.assertRaises(sql.DatabaseError, sql.read_sql, 'iris', self.conn)
 

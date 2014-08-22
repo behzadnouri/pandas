@@ -15,8 +15,8 @@ import numpy as np
 
 from pandas.io.common import _is_url, urlopen, parse_url
 from pandas.io.parsers import TextParser
-from pandas.compat import (lrange, lmap, u, string_types, iteritems, text_type,
-                           raise_with_traceback)
+from pandas.compat import (lrange, lmap, u, string_types, iteritems,
+                           raise_with_traceback, binary_type)
 from pandas.core import common as com
 from pandas import Series
 
@@ -49,6 +49,9 @@ else:
 # READ HTML #
 #############
 _RE_WHITESPACE = re.compile(r'[\r\n]+|\s{2,}')
+
+
+char_types = string_types + (binary_type,)
 
 
 def _remove_whitespace(s, regex=_RE_WHITESPACE):
@@ -114,13 +117,13 @@ def _read(obj):
             text = url.read()
     elif hasattr(obj, 'read'):
         text = obj.read()
-    elif isinstance(obj, string_types):
+    elif isinstance(obj, char_types):
         text = obj
         try:
             if os.path.isfile(text):
                 with open(text, 'rb') as f:
                     return f.read()
-        except TypeError:
+        except (TypeError, ValueError):
             pass
     else:
         raise TypeError("Cannot read object of type %r" % type(obj).__name__)
@@ -607,11 +610,6 @@ def _data_to_frame(data, header, index_col, skiprows, infer_types,
                     parse_dates=parse_dates, tupleize_cols=tupleize_cols,
                     thousands=thousands)
     df = tp.read()
-
-    if infer_types:  # TODO: rm this code so infer_types has no effect in 0.14
-        df = df.convert_objects(convert_dates='coerce')
-    else:
-        df = df.applymap(text_type)
     return df
 
 
@@ -757,9 +755,8 @@ def read_html(io, match='.+', flavor=None, header=None, index_col=None,
         that sequence.  Note that a single element sequence means 'skip the nth
         row' whereas an integer means 'skip n rows'.
 
-    infer_types : bool, optional
-        This option is deprecated in 0.13, an will have no effect in 0.14. It
-        defaults to ``True``.
+    infer_types : None, optional
+        This has no effect since 0.15.0. It is here for backwards compatibility.
 
     attrs : dict or None, optional
         This is a dictionary of attributes that you can pass to use to identify
@@ -838,9 +835,7 @@ def read_html(io, match='.+', flavor=None, header=None, index_col=None,
     pandas.io.parsers.read_csv
     """
     if infer_types is not None:
-        warnings.warn("infer_types will have no effect in 0.14", FutureWarning)
-    else:
-        infer_types = True  # TODO: remove effect of this in 0.14
+        warnings.warn("infer_types has no effect since 0.15", FutureWarning)
 
     # Type check here. We don't want to parse only to fail because of an
     # invalid value of an integer skiprows.

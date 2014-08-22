@@ -1,13 +1,14 @@
+from __future__ import print_function
 import re
 from datetime import datetime, timedelta
 import numpy as np
 import pandas.compat as compat
 import pandas as pd
 from pandas.compat import u, StringIO
-from pandas.core.base import FrozenList, FrozenNDArray, DatetimeIndexOpsMixin
+from pandas.core.base import FrozenList, FrozenNDArray, PandasDelegate, DatetimeIndexOpsMixin
 from pandas.util.testing import assertRaisesRegexp, assert_isinstance
+from pandas.tseries.common import is_datetimelike
 from pandas import Series, Index, Int64Index, DatetimeIndex, PeriodIndex
-from pandas import _np_version_under1p7
 import pandas.tslib as tslib
 import nose
 
@@ -127,6 +128,55 @@ class TestFrozenNDArray(CheckImmutable, CheckStringMixin, tm.TestCase):
         self.assert_numpy_array_equal(self.container, original)
         self.assertEqual(vals[0], n)
 
+
+class TestPandasDelegate(tm.TestCase):
+
+    def setUp(self):
+        pass
+
+    def test_invalida_delgation(self):
+        # these show that in order for the delegation to work
+        # the _delegate_* methods need to be overriden to not raise a TypeError
+
+        class Delegator(object):
+            _properties = ['foo']
+            _methods = ['bar']
+
+            def _set_foo(self, value):
+                self.foo = value
+
+            def _get_foo(self):
+                return self.foo
+
+            foo = property(_get_foo, _set_foo, doc="foo property")
+
+            def bar(self, *args, **kwargs):
+                """ a test bar method """
+                pass
+
+        class Delegate(PandasDelegate):
+            def __init__(self, obj):
+                self.obj = obj
+        Delegate._add_delegate_accessors(delegate=Delegator,
+                                         accessors=Delegator._properties,
+                                         typ='property')
+        Delegate._add_delegate_accessors(delegate=Delegator,
+                                         accessors=Delegator._methods,
+                                         typ='method')
+
+        delegate = Delegate(Delegator())
+
+        def f():
+            delegate.foo
+        self.assertRaises(TypeError, f)
+        def f():
+            delegate.foo = 5
+        self.assertRaises(TypeError, f)
+        def f():
+            delegate.foo()
+        self.assertRaises(TypeError, f)
+
+
 class Ops(tm.TestCase):
     def setUp(self):
         self.int_index     = tm.makeIntIndex(10)
@@ -190,6 +240,7 @@ class Ops(tm.TestCase):
                     else:
                         self.assertRaises(AttributeError, lambda : getattr(o,op))
 
+
 class TestIndexOps(Ops):
 
     def setUp(self):
@@ -197,8 +248,30 @@ class TestIndexOps(Ops):
         self.is_valid_objs  = [ o for o in self.objs if o._allow_index_ops ]
         self.not_valid_objs = [ o for o in self.objs if not o._allow_index_ops ]
 
+    def test_ndarray_compat_properties(self):
+
+        for o in self.objs:
+
+            # check that we work
+            for p in ['shape', 'dtype', 'base', 'flags', 'T',
+                      'strides', 'itemsize', 'nbytes']:
+                self.assertIsNotNone(getattr(o, p, None))
+
+            # if we have a datetimelike dtype then needs a view to work
+            # but the user is responsible for that
+            try:
+                self.assertIsNotNone(o.data)
+            except ValueError:
+                pass
+
+            self.assertRaises(ValueError, o.item)  # len > 1
+            self.assertEqual(o.ndim, 1)
+            self.assertEqual(o.size, len(o))
+
+        self.assertEqual(Index([1]).item(), 1)
+        self.assertEqual(Series([1]).item(), 1)
+
     def test_ops(self):
-        tm._skip_if_not_numpy17_friendly()
         for op in ['max','min']:
             for o in self.objs:
                 result = getattr(o,op)()
@@ -235,6 +308,27 @@ class TestIndexOps(Ops):
                 # check DatetimeIndex non-monotonic path
                 self.assertEqual(getattr(obj, op)(), datetime(2011, 11, 1))
 
+        # argmin/max
+        obj = Index(np.arange(5,dtype='int64'))
+        self.assertEqual(obj.argmin(),0)
+        self.assertEqual(obj.argmax(),4)
+
+        obj = Index([np.nan, 1, np.nan, 2])
+        self.assertEqual(obj.argmin(),1)
+        self.assertEqual(obj.argmax(),3)
+
+        obj = Index([np.nan])
+        self.assertEqual(obj.argmin(),-1)
+        self.assertEqual(obj.argmax(),-1)
+
+        obj = Index([pd.NaT, datetime(2011, 11, 1), datetime(2011,11,2),pd.NaT])
+        self.assertEqual(obj.argmin(),1)
+        self.assertEqual(obj.argmax(),2)
+
+        obj = Index([pd.NaT])
+        self.assertEqual(obj.argmin(),-1)
+        self.assertEqual(obj.argmax(),-1)
+
     def test_value_counts_unique_nunique(self):
         for o in self.objs:
             klass = type(o)
@@ -243,11 +337,17 @@ class TestIndexOps(Ops):
             # create repeated values, 'n'th element is repeated by n+1 times
             if isinstance(o, PeriodIndex):
                 # freq must be specified because repeat makes freq ambiguous
+                expected_index = o[::-1]
                 o = klass(np.repeat(values, range(1, len(o) + 1)), freq=o.freq)
-            else:
+            elif isinstance(o, Index):
+                expected_index = values[::-1]
                 o = klass(np.repeat(values, range(1, len(o) + 1)))
+            else:
+                expected_index = values[::-1]
+                idx = np.repeat(o.index.values, range(1, len(o) + 1))
+                o = klass(np.repeat(values, range(1, len(o) + 1)), index=idx)
 
-            expected_s = Series(range(10, 0, -1), index=values[::-1], dtype='int64')
+            expected_s = Series(range(10, 0, -1), index=expected_index, dtype='int64')
             tm.assert_series_equal(o.value_counts(), expected_s)
 
             result = o.unique()
@@ -278,12 +378,19 @@ class TestIndexOps(Ops):
 
                 # create repeated values, 'n'th element is repeated by n+1 times
                 if isinstance(o, PeriodIndex):
+                    # freq must be specified because repeat makes freq ambiguous
+                    expected_index = o
                     o = klass(np.repeat(values, range(1, len(o) + 1)), freq=o.freq)
-                else:
+                elif isinstance(o, Index):
+                    expected_index = values
                     o = klass(np.repeat(values, range(1, len(o) + 1)))
+                else:
+                    expected_index = values
+                    idx = np.repeat(o.index.values, range(1, len(o) + 1))
+                    o = klass(np.repeat(values, range(1, len(o) + 1)), index=idx)
 
-                expected_s_na = Series(list(range(10, 2, -1)) +[3], index=values[9:0:-1], dtype='int64')
-                expected_s = Series(list(range(10, 2, -1)), index=values[9:1:-1], dtype='int64')
+                expected_s_na = Series(list(range(10, 2, -1)) +[3], index=expected_index[9:0:-1], dtype='int64')
+                expected_s = Series(list(range(10, 2, -1)), index=expected_index[9:1:-1], dtype='int64')
 
                 tm.assert_series_equal(o.value_counts(dropna=False), expected_s_na)
                 tm.assert_series_equal(o.value_counts(), expected_s)
@@ -473,15 +580,71 @@ class TestIndexOps(Ops):
                 expected = o[5:].append(o[:5])
                 self.assertTrue(uniques.equals(expected))
 
+    def test_duplicated_drop_duplicates(self):
+        # GH 4060
+        for original in self.objs:
+
+            if isinstance(original, Index):
+                # original doesn't have duplicates
+                expected = Index([False] * len(original))
+                tm.assert_index_equal(original.duplicated(), expected)
+                result = original.drop_duplicates()
+                tm.assert_index_equal(result, original)
+                self.assertFalse(result is original)
+
+                # create repeated values, 3rd and 5th values are duplicated
+                idx = original[list(range(len(original))) + [5, 3]]
+                expected = Index([False] * len(original) + [True, True])
+                tm.assert_index_equal(idx.duplicated(), expected)
+                tm.assert_index_equal(idx.drop_duplicates(), original)
+
+                last_base = [False] * len(idx)
+                last_base[3] = True
+                last_base[5] = True
+                expected = Index(last_base)
+                tm.assert_index_equal(idx.duplicated(take_last=True), expected)
+                tm.assert_index_equal(idx.drop_duplicates(take_last=True),
+                                      idx[~np.array(last_base)])
+
+                with tm.assertRaisesRegexp(TypeError,
+                                           "drop_duplicates\(\) got an unexpected keyword argument"):
+                    idx.drop_duplicates(inplace=True)
+
+            else:
+                expected = Series([False] * len(original), index=original.index)
+                tm.assert_series_equal(original.duplicated(), expected)
+                result = original.drop_duplicates()
+                tm.assert_series_equal(result, original)
+                self.assertFalse(result is original)
+
+                idx = original.index[list(range(len(original))) + [5, 3]]
+                values = original.values[list(range(len(original))) + [5, 3]]
+                s = Series(values, index=idx)
+
+                expected = Series([False] * len(original) + [True, True], index=idx)
+                tm.assert_series_equal(s.duplicated(), expected)
+                tm.assert_series_equal(s.drop_duplicates(), original)
+
+                last_base = [False] * len(idx)
+                last_base[3] = True
+                last_base[5] = True
+                expected = Series(last_base, index=idx)
+                expected
+                tm.assert_series_equal(s.duplicated(take_last=True), expected)
+                tm.assert_series_equal(s.drop_duplicates(take_last=True),
+                                       s[~np.array(last_base)])
+
+                s.drop_duplicates(inplace=True)
+                tm.assert_series_equal(s, original)
+
 
 class TestDatetimeIndexOps(Ops):
-    _allowed = '_allow_datetime_index_ops'
     tz = [None, 'UTC', 'Asia/Tokyo', 'US/Eastern',
           'dateutil/Asia/Singapore', 'dateutil/US/Pacific']
 
     def setUp(self):
         super(TestDatetimeIndexOps, self).setUp()
-        mask = lambda x: x._allow_datetime_index_ops or x._allow_period_index_ops
+        mask = lambda x: isinstance(x, DatetimeIndex) or isinstance(x, PeriodIndex) or is_datetimelike(x)
         self.is_valid_objs  = [ o for o in self.objs if mask(o) ]
         self.not_valid_objs = [ o for o in self.objs if not mask(o) ]
 
@@ -636,10 +799,7 @@ Length: 3, Freq: None, Timezone: US/Eastern"""
                 tm.assert_index_equal(rng, expected)
 
             # offset
-            if _np_version_under1p7:
-                offsets = [pd.offsets.Hour(2), timedelta(hours=2)]
-            else:
-                offsets = [pd.offsets.Hour(2), timedelta(hours=2), np.timedelta64(2, 'h')]
+            offsets = [pd.offsets.Hour(2), timedelta(hours=2), np.timedelta64(2, 'h')]
 
             for delta in offsets:
                 rng = pd.date_range('2000-01-01', '2000-02-01', tz=tz)
@@ -683,10 +843,7 @@ Length: 3, Freq: None, Timezone: US/Eastern"""
                 tm.assert_index_equal(rng, expected)
 
             # offset
-            if _np_version_under1p7:
-                offsets = [pd.offsets.Hour(2), timedelta(hours=2)]
-            else:
-                offsets = [pd.offsets.Hour(2), timedelta(hours=2), np.timedelta64(2, 'h')]
+            offsets = [pd.offsets.Hour(2), timedelta(hours=2), np.timedelta64(2, 'h')]
 
             for delta in offsets:
                 rng = pd.date_range('2000-01-01', '2000-02-01', tz=tz)
@@ -733,11 +890,10 @@ Length: 3, Freq: None, Timezone: US/Eastern"""
 
 
 class TestPeriodIndexOps(Ops):
-    _allowed = '_allow_period_index_ops'
 
     def setUp(self):
         super(TestPeriodIndexOps, self).setUp()
-        mask = lambda x: x._allow_datetime_index_ops or x._allow_period_index_ops
+        mask = lambda x: isinstance(x, DatetimeIndex) or isinstance(x, PeriodIndex) or is_datetimelike(x)
         self.is_valid_objs  = [ o for o in self.objs if mask(o) ]
         self.not_valid_objs = [ o for o in self.objs if not mask(o) ]
 
@@ -917,11 +1073,64 @@ Length: 3, Freq: Q-DEC"""
             tm.assert_index_equal(rng, expected)
 
         # offset
-        for delta in [pd.offsets.Hour(2), timedelta(hours=2)]:
-            rng = pd.period_range('2000-01-01', '2000-02-01')
-            with tm.assertRaisesRegexp(TypeError, 'unsupported operand type\(s\)'):
+        # DateOffset
+        rng = pd.period_range('2014', '2024', freq='A')
+        result = rng + pd.offsets.YearEnd(5)
+        expected = pd.period_range('2019', '2029', freq='A')
+        tm.assert_index_equal(result, expected)
+        rng += pd.offsets.YearEnd(5)
+        tm.assert_index_equal(rng, expected)
+
+        for o in [pd.offsets.YearBegin(2), pd.offsets.MonthBegin(1), pd.offsets.Minute(),
+                  np.timedelta64(365, 'D'), timedelta(365)]:
+            with tm.assertRaisesRegexp(ValueError, 'Input has different freq from Period'):
+                rng + o
+
+        rng = pd.period_range('2014-01', '2016-12', freq='M')
+        result = rng + pd.offsets.MonthEnd(5)
+        expected = pd.period_range('2014-06', '2017-05', freq='M')
+        tm.assert_index_equal(result, expected)
+        rng += pd.offsets.MonthEnd(5)
+        tm.assert_index_equal(rng, expected)
+
+        for o in [pd.offsets.YearBegin(2), pd.offsets.MonthBegin(1), pd.offsets.Minute(),
+                  np.timedelta64(365, 'D'), timedelta(365)]:
+            rng = pd.period_range('2014-01', '2016-12', freq='M')
+            with tm.assertRaisesRegexp(ValueError, 'Input has different freq from Period'):
+                rng + o
+
+        # Tick
+        offsets = [pd.offsets.Day(3), timedelta(days=3), np.timedelta64(3, 'D'),
+                   pd.offsets.Hour(72), timedelta(minutes=60*24*3), np.timedelta64(72, 'h')]
+        for delta in offsets:
+            rng = pd.period_range('2014-05-01', '2014-05-15', freq='D')
+            result = rng + delta
+            expected = pd.period_range('2014-05-04', '2014-05-18', freq='D')
+            tm.assert_index_equal(result, expected)
+            rng += delta
+            tm.assert_index_equal(rng, expected)
+
+        for o in [pd.offsets.YearBegin(2), pd.offsets.MonthBegin(1), pd.offsets.Minute(),
+                  np.timedelta64(4, 'h'), timedelta(hours=23)]:
+            rng = pd.period_range('2014-05-01', '2014-05-15', freq='D')
+            with tm.assertRaisesRegexp(ValueError, 'Input has different freq from Period'):
+                rng + o
+
+        offsets = [pd.offsets.Hour(2), timedelta(hours=2), np.timedelta64(2, 'h'),
+                   pd.offsets.Minute(120), timedelta(minutes=120), np.timedelta64(120, 'm')]
+        for delta in offsets:
+            rng = pd.period_range('2014-01-01 10:00', '2014-01-05 10:00', freq='H')
+            result = rng + delta
+            expected = pd.period_range('2014-01-01 12:00', '2014-01-05 12:00', freq='H')
+            tm.assert_index_equal(result, expected)
+            rng += delta
+            tm.assert_index_equal(rng, expected)
+
+        for delta in [pd.offsets.YearBegin(2), timedelta(minutes=30), np.timedelta64(30, 's')]:
+            rng = pd.period_range('2014-01-01 10:00', '2014-01-05 10:00', freq='H')
+            with tm.assertRaisesRegexp(ValueError, 'Input has different freq from Period'):
                 result = rng + delta
-            with tm.assertRaisesRegexp(TypeError, 'unsupported operand type\(s\)'):
+            with tm.assertRaisesRegexp(ValueError, 'Input has different freq from Period'):
                 rng += delta
 
         # int
@@ -976,10 +1185,65 @@ Length: 3, Freq: Q-DEC"""
             tm.assert_index_equal(rng, expected)
 
         # offset
-        for delta in [pd.offsets.Hour(2), timedelta(hours=2)]:
-            with tm.assertRaisesRegexp(TypeError, 'unsupported operand type\(s\)'):
+        # DateOffset
+        rng = pd.period_range('2014', '2024', freq='A')
+        result = rng - pd.offsets.YearEnd(5)
+        expected = pd.period_range('2009', '2019', freq='A')
+        tm.assert_index_equal(result, expected)
+        rng -= pd.offsets.YearEnd(5)
+        tm.assert_index_equal(rng, expected)
+
+        for o in [pd.offsets.YearBegin(2), pd.offsets.MonthBegin(1), pd.offsets.Minute(),
+                  np.timedelta64(365, 'D'), timedelta(365)]:
+            rng = pd.period_range('2014', '2024', freq='A')
+            with tm.assertRaisesRegexp(ValueError, 'Input has different freq from Period'):
+                rng - o
+
+        rng = pd.period_range('2014-01', '2016-12', freq='M')
+        result = rng - pd.offsets.MonthEnd(5)
+        expected = pd.period_range('2013-08', '2016-07', freq='M')
+        tm.assert_index_equal(result, expected)
+        rng -= pd.offsets.MonthEnd(5)
+        tm.assert_index_equal(rng, expected)
+
+        for o in [pd.offsets.YearBegin(2), pd.offsets.MonthBegin(1), pd.offsets.Minute(),
+                  np.timedelta64(365, 'D'), timedelta(365)]:
+            rng = pd.period_range('2014-01', '2016-12', freq='M')
+            with tm.assertRaisesRegexp(ValueError, 'Input has different freq from Period'):
+                rng - o
+
+        # Tick
+        offsets = [pd.offsets.Day(3), timedelta(days=3), np.timedelta64(3, 'D'),
+                   pd.offsets.Hour(72), timedelta(minutes=60*24*3), np.timedelta64(72, 'h')]
+        for delta in offsets:
+            rng = pd.period_range('2014-05-01', '2014-05-15', freq='D')
+            result = rng - delta
+            expected = pd.period_range('2014-04-28', '2014-05-12', freq='D')
+            tm.assert_index_equal(result, expected)
+            rng -= delta
+            tm.assert_index_equal(rng, expected)
+
+        for o in [pd.offsets.YearBegin(2), pd.offsets.MonthBegin(1), pd.offsets.Minute(),
+                  np.timedelta64(4, 'h'), timedelta(hours=23)]:
+            rng = pd.period_range('2014-05-01', '2014-05-15', freq='D')
+            with tm.assertRaisesRegexp(ValueError, 'Input has different freq from Period'):
+                rng - o
+
+        offsets = [pd.offsets.Hour(2), timedelta(hours=2), np.timedelta64(2, 'h'),
+                   pd.offsets.Minute(120), timedelta(minutes=120), np.timedelta64(120, 'm')]
+        for delta in offsets:
+            rng = pd.period_range('2014-01-01 10:00', '2014-01-05 10:00', freq='H')
+            result = rng - delta
+            expected = pd.period_range('2014-01-01 08:00', '2014-01-05 08:00', freq='H')
+            tm.assert_index_equal(result, expected)
+            rng -= delta
+            tm.assert_index_equal(rng, expected)
+
+        for delta in [pd.offsets.YearBegin(2), timedelta(minutes=30), np.timedelta64(30, 's')]:
+            rng = pd.period_range('2014-01-01 10:00', '2014-01-05 10:00', freq='H')
+            with tm.assertRaisesRegexp(ValueError, 'Input has different freq from Period'):
                 result = rng + delta
-            with tm.assertRaisesRegexp(TypeError, 'unsupported operand type\(s\)'):
+            with tm.assertRaisesRegexp(ValueError, 'Input has different freq from Period'):
                 rng += delta
 
         # int

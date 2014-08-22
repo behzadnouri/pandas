@@ -16,7 +16,7 @@ from pandas.tseries.period import PeriodIndex
 from pandas.core.internals import BlockManager
 import pandas.core.common as com
 import pandas.core.datetools as datetools
-from pandas import compat, _np_version_under1p7
+from pandas import compat
 from pandas.compat import map, zip, lrange, string_types, isidentifier, lmap
 from pandas.core.common import (isnull, notnull, is_list_like,
                                 _values_from_object, _maybe_promote,
@@ -105,7 +105,7 @@ class NDFrame(PandasObject):
         """ validate the passed dtype """
 
         if dtype is not None:
-            dtype = np.dtype(dtype)
+            dtype = com._coerce_to_dtype(dtype)
 
             # a compound dtype
             if dtype.kind == 'V':
@@ -916,7 +916,7 @@ class NDFrame(PandasObject):
         return packers.to_msgpack(path_or_buf, self, **kwargs)
 
     def to_sql(self, name, con, flavor='sqlite', if_exists='fail', index=True,
-               index_label=None):
+               index_label=None, chunksize=None):
         """
         Write records stored in a DataFrame to a SQL database.
 
@@ -942,12 +942,15 @@ class NDFrame(PandasObject):
             Column label for index column(s). If None is given (default) and
             `index` is True, then the index names are used.
             A sequence should be given if the DataFrame uses MultiIndex.
+        chunksize : int, default None
+            If not None, then rows will be written in batches of this size at a 
+            time.  If None, all rows will be written at once.
 
         """
         from pandas.io import sql
         sql.to_sql(
             self, name, con, flavor=flavor, if_exists=if_exists, index=index,
-            index_label=index_label)
+            index_label=index_label, chunksize=chunksize)
 
     def to_pickle(self, path):
         """
@@ -1088,8 +1091,14 @@ class NDFrame(PandasObject):
     @property
     def _is_cached(self):
         """ boolean : return if I am cached """
+        return getattr(self, '_cacher', None) is not None
+
+    def _get_cacher(self):
+        """ return my cacher or None """
         cacher = getattr(self, '_cacher', None)
-        return cacher is not None
+        if cacher is not None:
+            cacher = cacher[1]()
+        return cacher
 
     @property
     def _is_view(self):
@@ -1154,8 +1163,35 @@ class NDFrame(PandasObject):
             else:
                 self.is_copy = None
 
-    def _check_setitem_copy(self, stacklevel=4, t='setting'):
+    def _check_is_chained_assignment_possible(self):
         """
+        check if we are a view, have a cacher, and are of mixed type
+        if so, then force a setitem_copy check
+
+        should be called just near setting a value
+
+        will return a boolean if it we are a view and are cached, but a single-dtype
+        meaning that the cacher should be updated following setting
+        """
+        if self._is_view and self._is_cached:
+            ref = self._get_cacher()
+            if ref is not None and ref._is_mixed_type:
+                self._check_setitem_copy(stacklevel=4, t='referant', force=True)
+            return True
+        elif self.is_copy:
+            self._check_setitem_copy(stacklevel=4, t='referant')
+        return False
+
+    def _check_setitem_copy(self, stacklevel=4, t='setting', force=False):
+        """
+
+        Parameters
+        ----------
+        stacklevel : integer, default 4
+           the level to show of the stack when the error is output
+        t : string, the type of setting error
+        force : boolean, default False
+           if True, then force showing an error
 
         validate if we are doing a settitem on a chained copy.
 
@@ -1177,7 +1213,7 @@ class NDFrame(PandasObject):
 
         """
 
-        if self.is_copy:
+        if force or self.is_copy:
 
             value = config.get_option('mode.chained_assignment')
             if value is None:
@@ -1193,12 +1229,17 @@ class NDFrame(PandasObject):
             except:
                 pass
 
-            if t == 'referant':
+            # a custom message
+            if isinstance(self.is_copy, string_types):
+                t = self.is_copy
+
+            elif t == 'referant':
                 t = ("\n"
                      "A value is trying to be set on a copy of a slice from a "
                      "DataFrame\n\n"
                      "See the the caveats in the documentation: "
                      "http://pandas.pydata.org/pandas-docs/stable/indexing.html#indexing-view-versus-copy")
+
             else:
                 t = ("\n"
                      "A value is trying to be set on a copy of a slice from a "
@@ -1505,7 +1546,7 @@ class NDFrame(PandasObject):
             if level is not None:
                 if not isinstance(axis, MultiIndex):
                     raise AssertionError('axis must be a MultiIndex')
-                indexer = ~lib.ismember(axis.get_level_values(level),
+                indexer = ~lib.ismember(axis.get_level_values(level).values,
                                         set(labels))
             else:
                 indexer = ~axis.isin(labels)
@@ -2135,16 +2176,14 @@ class NDFrame(PandasObject):
 
         Parameters
         ----------
-        deep : boolean, default True
+        deep : boolean or string, default True
             Make a deep copy, i.e. also copy data
 
         Returns
         -------
         copy : type of caller
         """
-        data = self._data
-        if deep:
-            data = data.copy()
+        data = self._data.copy(deep=deep)
         return self._constructor(data).__finalize__(self)
 
     def convert_objects(self, convert_dates=True, convert_numeric=False,
@@ -3469,7 +3508,7 @@ class NDFrame(PandasObject):
 
         return result
 
-    def tz_convert(self, tz, axis=0, copy=True):
+    def tz_convert(self, tz, axis=0, level=None, copy=True):
         """
         Convert the axis to target time zone. If it is time zone naive, it
         will be localized to the passed time zone.
@@ -3477,6 +3516,10 @@ class NDFrame(PandasObject):
         Parameters
         ----------
         tz : string or pytz.timezone object
+        axis : the axis to convert
+        level : int, str, default None
+            If axis ia a MultiIndex, convert a specific level. Otherwise
+            must be None
         copy : boolean, default True
             Also make a copy of the underlying data
 
@@ -3486,27 +3529,44 @@ class NDFrame(PandasObject):
         axis = self._get_axis_number(axis)
         ax = self._get_axis(axis)
 
-        if not hasattr(ax, 'tz_convert'):
-            if len(ax) > 0:
-                ax_name = self._get_axis_name(axis)
-                raise TypeError('%s is not a valid DatetimeIndex or PeriodIndex' %
-                                ax_name)
+        def _tz_convert(ax, tz):
+            if not hasattr(ax, 'tz_convert'):
+                if len(ax) > 0:
+                    ax_name = self._get_axis_name(axis)
+                    raise TypeError('%s is not a valid DatetimeIndex or PeriodIndex' %
+                                    ax_name)
+                else:
+                    ax = DatetimeIndex([],tz=tz)
             else:
-                ax = DatetimeIndex([],tz=tz)
+                ax = ax.tz_convert(tz)
+            return ax
+
+        # if a level is given it must be a MultiIndex level or
+        # equivalent to the axis name
+        if isinstance(ax, MultiIndex):
+            level = ax._get_level_number(level)
+            new_level = _tz_convert(ax.levels[level], tz)
+            ax = ax.set_levels(new_level, level=level)
         else:
-            ax = ax.tz_convert(tz)
+            if level not in (None, 0, ax.name):
+                raise ValueError("The level {0} is not valid".format(level))
+            ax =  _tz_convert(ax, tz)
 
         result = self._constructor(self._data, copy=copy)
         result.set_axis(axis,ax)
         return result.__finalize__(self)
 
-    def tz_localize(self, tz, axis=0, copy=True, infer_dst=False):
+    def tz_localize(self, tz, axis=0, level=None, copy=True, infer_dst=False):
         """
         Localize tz-naive TimeSeries to target time zone
 
         Parameters
         ----------
         tz : string or pytz.timezone object
+        axis : the axis to localize
+        level : int, str, default None
+            If axis ia a MultiIndex, localize a specific level. Otherwise
+            must be None
         copy : boolean, default True
             Also make a copy of the underlying data
         infer_dst : boolean, default False
@@ -3518,15 +3578,28 @@ class NDFrame(PandasObject):
         axis = self._get_axis_number(axis)
         ax = self._get_axis(axis)
 
-        if not hasattr(ax, 'tz_localize'):
-            if len(ax) > 0:
-                ax_name = self._get_axis_name(axis)
-                raise TypeError('%s is not a valid DatetimeIndex or PeriodIndex' %
-                                ax_name)
+        def _tz_localize(ax, tz, infer_dst):
+            if not hasattr(ax, 'tz_localize'):
+                if len(ax) > 0:
+                    ax_name = self._get_axis_name(axis)
+                    raise TypeError('%s is not a valid DatetimeIndex or PeriodIndex' %
+                                    ax_name)
+                else:
+                    ax = DatetimeIndex([],tz=tz)
             else:
-                ax = DatetimeIndex([],tz=tz)
+                ax = ax.tz_localize(tz, infer_dst=infer_dst)
+            return ax
+
+        # if a level is given it must be a MultiIndex level or
+        # equivalent to the axis name
+        if isinstance(ax, MultiIndex):
+            level = ax._get_level_number(level)
+            new_level = _tz_localize(ax.levels[level], tz, infer_dst)
+            ax = ax.set_levels(new_level, level=level)
         else:
-            ax = ax.tz_localize(tz, infer_dst=infer_dst)
+            if level not in (None, 0, ax.name):
+                raise ValueError("The level {0} is not valid".format(level))
+            ax =  _tz_localize(ax, tz, infer_dst)
 
         result = self._constructor(self._data, copy=copy)
         result.set_axis(axis,ax)
@@ -3543,21 +3616,6 @@ class NDFrame(PandasObject):
         -------
         abs: type of caller
         """
-
-        # suprimo numpy 1.6 hacking
-        # for timedeltas
-        if _np_version_under1p7:
-
-            def _convert_timedeltas(x):
-                if x.dtype.kind == 'm':
-                    return np.abs(x.view('i8')).astype(x.dtype)
-                return np.abs(x)
-
-            if self.ndim == 1:
-                return _convert_timedeltas(self)
-            elif self.ndim == 2:
-                return  self.apply(_convert_timedeltas)
-
         return np.abs(self)
 
     _shared_docs['describe'] = """

@@ -9,6 +9,7 @@ import codecs
 import csv
 import types
 from datetime import datetime, timedelta
+from functools import partial
 
 from numpy.lib.format import read_array, write_array
 import numpy as np
@@ -205,7 +206,7 @@ def _isnull_new(obj):
     # hack (for now) because MI registers as ndarray
     elif isinstance(obj, pd.MultiIndex):
         raise NotImplementedError("isnull is not defined for MultiIndex")
-    elif isinstance(obj, (ABCSeries, np.ndarray)):
+    elif isinstance(obj, (ABCSeries, np.ndarray, pd.Index)):
         return _isnull_ndarraylike(obj)
     elif isinstance(obj, ABCGeneric):
         return obj._constructor(obj._data.isnull(func=isnull))
@@ -231,7 +232,7 @@ def _isnull_old(obj):
     # hack (for now) because MI registers as ndarray
     elif isinstance(obj, pd.MultiIndex):
         raise NotImplementedError("isnull is not defined for MultiIndex")
-    elif isinstance(obj, (ABCSeries, np.ndarray)):
+    elif isinstance(obj, (ABCSeries, np.ndarray, pd.Index)):
         return _isnull_ndarraylike_old(obj)
     elif isinstance(obj, ABCGeneric):
         return obj._constructor(obj._data.isnull(func=_isnull_old))
@@ -275,15 +276,22 @@ def _isnull_ndarraylike(obj):
     dtype = values.dtype
 
     if dtype.kind in ('O', 'S', 'U'):
-        # Working around NumPy ticket 1542
-        shape = values.shape
-
-        if dtype.kind in ('S', 'U'):
-            result = np.zeros(values.shape, dtype=bool)
+        if is_categorical_dtype(values):
+            from pandas import Categorical
+            if not isinstance(values, Categorical):
+                values = values.values
+            result = values.isnull()
         else:
-            result = np.empty(shape, dtype=bool)
-            vec = lib.isnullobj(values.ravel())
-            result[...] = vec.reshape(shape)
+
+            # Working around NumPy ticket 1542
+            shape = values.shape
+
+            if dtype.kind in ('S', 'U'):
+                result = np.zeros(values.shape, dtype=bool)
+            else:
+                result = np.empty(shape, dtype=bool)
+                vec = lib.isnullobj(values.ravel())
+                result[...] = vec.reshape(shape)
 
     elif dtype in _DATELIKE_DTYPES:
         # this is the NaT pattern
@@ -297,7 +305,6 @@ def _isnull_ndarraylike(obj):
         result = Series(result, index=obj.index, name=obj.name, copy=False)
 
     return result
-
 
 def _isnull_ndarraylike_old(obj):
     values = getattr(obj, 'values', obj)
@@ -367,7 +374,7 @@ def _is_null_datelike_scalar(other):
         return isnull(other)
     return False
 
-def array_equivalent(left, right):
+def array_equivalent(left, right, strict_nan=False):
     """
     True if two arrays, left and right, have equal non-NaN elements, and NaNs in
     corresponding locations.  False otherwise. It is assumed that left and right
@@ -378,6 +385,8 @@ def array_equivalent(left, right):
     Parameters
     ----------
     left, right : ndarrays
+    strict_nan : bool, default False
+        If True, consider NaN and None to be different.
 
     Returns
     -------
@@ -393,11 +402,32 @@ def array_equivalent(left, right):
     """
     left, right = np.asarray(left), np.asarray(right)
     if left.shape != right.shape: return False
-    # NaNs occur only in object arrays, float or complex arrays.
+
+    # Object arrays can contain None, NaN and NaT.
     if issubclass(left.dtype.type, np.object_):
-        return ((left == right) | (pd.isnull(left) & pd.isnull(right))).all()
+
+        if not strict_nan:
+            # pd.isnull considers NaN and None to be equivalent.
+            return ((left == right) | (pd.isnull(left) & pd.isnull(right))).all()
+
+        for left_value, right_value in zip(left, right):
+            if left_value is tslib.NaT and right_value is not tslib.NaT:
+                return False
+
+            elif isinstance(left_value, float) and np.isnan(left_value):
+                if not isinstance(right_value, float) or not np.isnan(right_value):
+                    return False
+            else:
+                if left_value != right_value:
+                    return False
+
+        return True
+
+    # NaNs can occur in float and complex arrays.
     if issubclass(left.dtype.type, (np.floating, np.complexfloating)):
         return ((left == right) | (np.isnan(left) & np.isnan(right))).all()
+
+    # NaNs cannot occur otherwise.
     return np.array_equal(left, right)
 
 def _iterable_not_string(x):
@@ -1847,6 +1877,8 @@ def _possibly_cast_to_datetime(value, dtype, coerce=False):
     """ try to cast the array/value to a datetimelike dtype, converting float
     nan to iNaT
     """
+    from pandas.tseries.timedeltas import _possibly_cast_to_timedelta
+    from pandas.tseries.tools import to_datetime
 
     if dtype is not None:
         if isinstance(dtype, compat.string_types):
@@ -1885,13 +1917,11 @@ def _possibly_cast_to_datetime(value, dtype, coerce=False):
                 elif np.prod(value.shape) and value.dtype != dtype:
                     try:
                         if is_datetime64:
-                            from pandas.tseries.tools import to_datetime
                             value = to_datetime(value, coerce=coerce).values
                         elif is_timedelta64:
-                            from pandas.tseries.timedeltas import \
-                                _possibly_cast_to_timedelta
-                            value = _possibly_cast_to_timedelta(value, coerce='compat', dtype=dtype)
-                    except:
+                            value = _possibly_cast_to_timedelta(value,
+                                                                dtype=dtype)
+                    except (AttributeError, ValueError):
                         pass
 
     else:
@@ -1900,28 +1930,20 @@ def _possibly_cast_to_datetime(value, dtype, coerce=False):
 
         # catch a datetime/timedelta that is not of ns variety
         # and no coercion specified
-        if (is_array and value.dtype.kind in ['M','m']):
+        if is_array and value.dtype.kind in ['M', 'm']:
             dtype = value.dtype
 
             if dtype.kind == 'M' and dtype != _NS_DTYPE:
                 value = value.astype(_NS_DTYPE)
 
             elif dtype.kind == 'm' and dtype != _TD_DTYPE:
-                from pandas.tseries.timedeltas import \
-                     _possibly_cast_to_timedelta
-                value = _possibly_cast_to_timedelta(value, coerce='compat')
+                value = _possibly_cast_to_timedelta(value)
 
         # only do this if we have an array and the dtype of the array is not
         # setup already we are not an integer/object, so don't bother with this
         # conversion
-        elif (is_array and not (
-            issubclass(value.dtype.type, np.integer) or
-            value.dtype == np.object_)):
-            pass
-
-        # try to infer if we have a datetimelike here
-        # otherwise pass thru
-        else:
+        elif not (is_array and not (issubclass(value.dtype.type, np.integer) or
+                                    value.dtype == np.object_)):
             value = _possibly_infer_to_datetimelike(value)
 
     return value
@@ -2024,8 +2046,7 @@ def _is_bool_indexer(key):
 def _default_index(n):
     from pandas.core.index import Int64Index
     values = np.arange(n, dtype=np.int64)
-    result = values.view(Int64Index)
-    result.name = None
+    result = Int64Index(values,name=None)
     result.is_unique = True
     return result
 
@@ -2305,19 +2326,31 @@ def is_number(obj):
     return isinstance(obj, (numbers.Number, np.number))
 
 
+def _coerce_to_dtype(dtype):
+    """ coerce a string / np.dtype to a dtype """
+    if is_categorical_dtype(dtype):
+        dtype = CategoricalDtype()
+    else:
+        dtype = np.dtype(dtype)
+    return dtype
+
 def _get_dtype(arr_or_dtype):
     if isinstance(arr_or_dtype, np.dtype):
         return arr_or_dtype
-    if isinstance(arr_or_dtype, type):
+    elif isinstance(arr_or_dtype, type):
         return np.dtype(arr_or_dtype)
+    elif isinstance(arr_or_dtype, CategoricalDtype):
+        return CategoricalDtype()
     return arr_or_dtype.dtype
 
 
 def _get_dtype_type(arr_or_dtype):
     if isinstance(arr_or_dtype, np.dtype):
         return arr_or_dtype.type
-    if isinstance(arr_or_dtype, type):
+    elif isinstance(arr_or_dtype, type):
         return np.dtype(arr_or_dtype).type
+    elif isinstance(arr_or_dtype, CategoricalDtype):
+        return CategoricalDtypeType
     return arr_or_dtype.dtype.type
 
 
@@ -2433,6 +2466,21 @@ def _is_sequence(x):
     except (TypeError, AttributeError):
         return False
 
+def _get_callable_name(obj):
+    # typical case has name
+    if hasattr(obj, '__name__'):
+        return getattr(obj, '__name__')
+    # some objects don't; could recurse
+    if isinstance(obj, partial):
+        return _get_callable_name(obj.func)
+    # fall back to class name
+    if hasattr(obj, '__call__'):
+        return obj.__class__.__name__
+    # everything failed (probably because the argument
+    # wasn't actually callable); we return None
+    # instead of the empty string in this case to allow
+    # distinguishing between no name and a name of ''
+    return None
 
 _string_dtypes = frozenset(map(_get_dtype_from_object, (compat.binary_type,
                                                         compat.text_type)))
@@ -2452,7 +2500,7 @@ def _astype_nansafe(arr, dtype, copy=True):
     """ return a view if copy is False, but
         need to be very careful as the result shape could change! """
     if not isinstance(dtype, np.dtype):
-        dtype = np.dtype(dtype)
+        dtype = _coerce_to_dtype(dtype)
 
     if is_datetime64_dtype(arr):
         if dtype == object:

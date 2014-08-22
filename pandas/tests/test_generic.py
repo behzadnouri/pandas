@@ -7,7 +7,7 @@ from numpy import nan
 import pandas as pd
 
 from pandas import (Index, Series, DataFrame, Panel,
-                    isnull, notnull,date_range)
+                    isnull, notnull, date_range, period_range)
 from pandas.core.index import Index, MultiIndex
 
 import pandas.core.common as com
@@ -160,8 +160,6 @@ class Generic(object):
         self.assertRaises(ValueError, lambda : not obj1)
 
     def test_numpy_1_7_compat_numeric_methods(self):
-        tm._skip_if_not_numpy17_friendly()
-
         # GH 4435
         # numpy in 1.7 tries to pass addtional arguments to pandas functions
 
@@ -734,8 +732,8 @@ class TestDataFrame(tm.TestCase, Generic):
 
         result = df.set_index('C').interpolate()
         expected = df.set_index('C')
-        expected.A.loc[3] = 3
-        expected.B.loc[5] = 9
+        expected.loc[3,'A'] = 3
+        expected.loc[5,'B'] = 9
         assert_frame_equal(result, expected)
 
     def test_interp_bad_method(self):
@@ -810,8 +808,8 @@ class TestDataFrame(tm.TestCase, Generic):
                         'C': [1, 2, 3, 5, 8, 13, 21]})
         result = df.interpolate(method='barycentric')
         expected = df.copy()
-        expected['A'].iloc[2] = 3
-        expected['A'].iloc[5] = 6
+        expected.ix[2,'A'] = 3
+        expected.ix[5,'A'] = 6
         assert_frame_equal(result, expected)
 
         result = df.interpolate(method='barycentric', downcast='infer')
@@ -819,15 +817,13 @@ class TestDataFrame(tm.TestCase, Generic):
 
         result = df.interpolate(method='krogh')
         expectedk = df.copy()
-        # expectedk['A'].iloc[2] = 3
-        # expectedk['A'].iloc[5] = 6
         expectedk['A'] = expected['A']
         assert_frame_equal(result, expectedk)
 
         _skip_if_no_pchip()
         result = df.interpolate(method='pchip')
-        expected['A'].iloc[2] = 3
-        expected['A'].iloc[5] = 6.125
+        expected.ix[2,'A'] = 3
+        expected.ix[5,'A'] = 6.125
         assert_frame_equal(result, expected)
 
     def test_interp_rowwise(self):
@@ -838,9 +834,9 @@ class TestDataFrame(tm.TestCase, Generic):
                         4: [1, 2, 3, 4]})
         result = df.interpolate(axis=1)
         expected = df.copy()
-        expected[1].loc[3] = 5
-        expected[2].loc[0] = 3
-        expected[3].loc[1] = 3
+        expected.loc[3,1] = 5
+        expected.loc[0,2] = 3
+        expected.loc[1,3] = 3
         expected[4] = expected[4].astype(np.float64)
         assert_frame_equal(result, expected)
 
@@ -1101,6 +1097,80 @@ class TestDataFrame(tm.TestCase, Generic):
         # reset
         DataFrame._metadata = _metadata
         DataFrame.__finalize__ = _finalize
+
+    def test_tz_convert_and_localize(self):
+        l0 = date_range('20140701', periods=5, freq='D')
+
+        # TODO: l1 should be a PeriodIndex for testing
+        #       after GH2106 is addressed
+        with tm.assertRaises(NotImplementedError):
+            period_range('20140701', periods=1).tz_convert('UTC')
+        with tm.assertRaises(NotImplementedError):
+            period_range('20140701', periods=1).tz_localize('UTC')
+        # l1 = period_range('20140701', periods=5, freq='D')
+        l1 = date_range('20140701', periods=5, freq='D')
+
+        int_idx = Index(range(5))
+
+        for fn in ['tz_localize', 'tz_convert']:
+
+            if fn == 'tz_convert':
+                l0 = l0.tz_localize('UTC')
+                l1 = l1.tz_localize('UTC')
+
+            for idx in [l0, l1]:
+
+                l0_expected  = getattr(idx, fn)('US/Pacific')
+                l1_expected  = getattr(idx, fn)('US/Pacific')
+
+                df1 = DataFrame(np.ones(5), index=l0)
+                df1 = getattr(df1, fn)('US/Pacific')
+                self.assertTrue(df1.index.equals(l0_expected))
+
+                # MultiIndex
+                # GH7846
+                df2 = DataFrame(np.ones(5), 
+                                MultiIndex.from_arrays([l0, l1]))
+
+                df3 = getattr(df2, fn)('US/Pacific', level=0)
+                self.assertFalse(df3.index.levels[0].equals(l0))
+                self.assertTrue(df3.index.levels[0].equals(l0_expected))
+                self.assertTrue(df3.index.levels[1].equals(l1))
+                self.assertFalse(df3.index.levels[1].equals(l1_expected))
+
+                df3 = getattr(df2, fn)('US/Pacific', level=1)
+                self.assertTrue(df3.index.levels[0].equals(l0))
+                self.assertFalse(df3.index.levels[0].equals(l0_expected))
+                self.assertTrue(df3.index.levels[1].equals(l1_expected))
+                self.assertFalse(df3.index.levels[1].equals(l1))
+
+                df4 = DataFrame(np.ones(5),
+                                MultiIndex.from_arrays([int_idx, l0]))
+
+                df5 = getattr(df4, fn)('US/Pacific', level=1)
+                self.assertTrue(df3.index.levels[0].equals(l0))
+                self.assertFalse(df3.index.levels[0].equals(l0_expected))
+                self.assertTrue(df3.index.levels[1].equals(l1_expected))
+                self.assertFalse(df3.index.levels[1].equals(l1))
+
+        # Bad Inputs
+        for fn in ['tz_localize', 'tz_convert']:
+            # Not DatetimeIndex / PeriodIndex
+            with tm.assertRaisesRegexp(TypeError, 'DatetimeIndex'):
+                df = DataFrame(index=int_idx)
+                df = getattr(df, fn)('US/Pacific')
+
+            # Not DatetimeIndex / PeriodIndex
+            with tm.assertRaisesRegexp(TypeError, 'DatetimeIndex'):
+                df = DataFrame(np.ones(5),
+                            MultiIndex.from_arrays([int_idx, l0]))
+                df = getattr(df, fn)('US/Pacific', level=0)
+
+            # Invalid level
+            with tm.assertRaisesRegexp(ValueError, 'not valid'):
+                df = DataFrame(index=l0)
+                df = getattr(df, fn)('US/Pacific', level=1)
+
 
 class TestPanel(tm.TestCase, Generic):
     _typ = Panel

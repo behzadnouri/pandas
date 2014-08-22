@@ -25,7 +25,7 @@ import pandas.computation.expressions as expressions
 from pandas.util.decorators import cache_readonly
 
 from pandas.tslib import Timestamp
-from pandas import compat, _np_version_under1p7
+from pandas import compat
 from pandas.compat import range, map, zip, u
 from pandas.tseries.timedeltas import _coerce_scalar_to_timedelta_type
 
@@ -81,6 +81,11 @@ class Block(PandasObject):
     @property
     def _is_single_block(self):
         return self.ndim == 1
+
+    @property
+    def is_view(self):
+        """ return a boolean if I am possibly a view """
+        return self.values.base is not None
 
     @property
     def is_datelike(self):
@@ -451,9 +456,9 @@ class Block(PandasObject):
         values[mask] = na_rep
         return values.tolist()
 
-    def _validate_merge(self, blocks):
-        """ validate that we can merge these blocks """
-        return True
+    def _concat_blocks(self, blocks, values):
+        """ return the block concatenation """
+        return self._holder(values[0])
 
     # block actions ####
     def copy(self, deep=True):
@@ -488,6 +493,11 @@ class Block(PandasObject):
         indexer is a direct slice/positional indexer; value must be a
         compatible shape
         """
+
+        # coerce None values, if appropriate
+        if value is None:
+            if self.is_numeric:
+                value = np.nan
 
         # coerce args
         values, value = self._try_coerce_args(self.values, value)
@@ -582,7 +592,7 @@ class Block(PandasObject):
             mask = mask.values.T
 
         # if we are passed a scalar None, convert it here
-        if not is_list_like(new) and isnull(new):
+        if not is_list_like(new) and isnull(new) and not self.is_object:
             new = self.fill_value
 
         if self._can_hold_element(new):
@@ -812,7 +822,10 @@ class Block(PandasObject):
         if f_ordered:
             new_values = new_values.T
             axis = new_values.ndim - axis - 1
-        new_values = np.roll(new_values, periods, axis=axis)
+
+        if np.prod(new_values.shape):
+            new_values = np.roll(new_values, periods, axis=axis)
+
         axis_indexer = [ slice(None) ] * self.ndim
         if periods > 0:
             axis_indexer[axis] = slice(None,periods)
@@ -1293,10 +1306,8 @@ class TimeDeltaBlock(IntBlock):
     def get_values(self, dtype=None):
         # return object dtypes as datetime.timedeltas
         if dtype == object:
-            if _np_version_under1p7:
-                return self.values.astype('object')
             return lib.map_infer(self.values.ravel(),
-                                 lambda x: timedelta(microseconds=x.item()/1000)
+                                 lambda x: timedelta(microseconds=x.item() / 1000)
                                  ).reshape(self.values.shape)
         return self.values
 
@@ -1558,6 +1569,11 @@ class CategoricalBlock(NonConsolidatableMixIn, ObjectBlock):
                                                fastpath=True, placement=placement,
                                                **kwargs)
 
+    @property
+    def is_view(self):
+        """ I am never a view """
+        return False
+
     def to_dense(self):
         return self.values.to_dense().view()
 
@@ -1620,6 +1636,27 @@ class CategoricalBlock(NonConsolidatableMixIn, ObjectBlock):
 
         return self.make_block_same_class(new_values, new_mgr_locs)
 
+    def putmask(self, mask, new, align=True, inplace=False):
+        """ putmask the data to the block; it is possible that we may create a
+        new dtype of block
+
+        return the resulting block(s)
+
+        Parameters
+        ----------
+        mask  : the condition to respect
+        new : a ndarray/object
+        align : boolean, perform alignment on other/cond, default is True
+        inplace : perform inplace modification, default is False
+
+        Returns
+        -------
+        a new block(s), the result of the putmask
+        """
+        new_values = self.values if inplace else self.values.copy()
+        new_values[mask] = new
+        return [self.make_block_same_class(values=new_values, placement=self.mgr_locs)]
+
     def _astype(self, dtype, copy=False, raise_on_error=True, values=None,
                 klass=None):
         """
@@ -1639,15 +1676,19 @@ class CategoricalBlock(NonConsolidatableMixIn, ObjectBlock):
                           ndim=self.ndim,
                           placement=self.mgr_locs)
 
-    def _validate_merge(self, blocks):
-        """ validate that we can merge these blocks """
+    def _concat_blocks(self, blocks, values):
+        """
+        validate that we can merge these blocks
+
+        return the block concatenation
+        """
 
         levels = self.values.levels
         for b in blocks:
             if not levels.equals(b.values.levels):
                 raise ValueError("incompatible levels in categorical block merge")
 
-        return True
+        return self._holder(values[0], levels=levels)
 
     def to_native_types(self, slicer=None, na_rep='', **kwargs):
         """ convert to our native types format, slicing if desired """
@@ -2518,7 +2559,7 @@ class BlockManager(PandasObject):
     def is_view(self):
         """ return a boolean if we are a single block and are a view """
         if len(self.blocks) == 1:
-            return self.blocks[0].values.base is not None
+            return self.blocks[0].is_view
 
         # It is technically possible to figure out which blocks are views
         # e.g. [ b.values.base is not None for b in self.blocks ]
@@ -2603,15 +2644,22 @@ class BlockManager(PandasObject):
 
         Parameters
         ----------
-        deep : boolean, default True
+        deep : boolean o rstring, default True
             If False, return shallow copy (do not copy data)
+            If 'all', copy data and a deep copy of the index
 
         Returns
         -------
         copy : BlockManager
         """
+
+        # this preserves the notion of view copying of axes
         if deep:
-            new_axes = [ax.view() for ax in self.axes]
+            if deep == 'all':
+                copy = lambda ax: ax.copy(deep=True)
+            else:
+                copy = lambda ax: ax.view()
+            new_axes = [ copy(ax) for ax in self.axes]
         else:
             new_axes = list(self.axes)
         return self.apply('copy', axes=new_axes, deep=deep,
@@ -4026,17 +4074,11 @@ def concatenate_join_units(join_units, concat_axis, copy):
     else:
         concat_values = com._concat_compat(to_concat, axis=concat_axis)
 
-    # FIXME: optimization potential: if len(join_units) == 1, single join unit
-    # is densified and sparsified back.
     if any(unit.needs_block_conversion for unit in join_units):
 
         # need to ask the join unit block to convert to the underlying repr for us
         blocks = [ unit.block for unit in join_units if unit.block is not None ]
-
-        # may need to validate this combination
-        blocks[0]._validate_merge(blocks)
-
-        return blocks[0]._holder(concat_values[0])
+        return blocks[0]._concat_blocks(blocks, concat_values)
     else:
         return concat_values
 

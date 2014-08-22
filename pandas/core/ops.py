@@ -247,7 +247,7 @@ class _TimeOp(object):
 
         # need to make sure that we are aligning the data
         if isinstance(left, pd.Series) and isinstance(right, pd.Series):
-            left, right = left.align(right)
+            left, right = left.align(right,copy=False)
 
         self.left = left
         self.right = right
@@ -258,9 +258,7 @@ class _TimeOp(object):
         self.is_datetime_lhs = com.is_datetime64_dtype(left)
         self.is_integer_lhs = left.dtype.kind in ['i', 'u']
         self.is_datetime_rhs = com.is_datetime64_dtype(rvalues)
-        self.is_timedelta_rhs = (com.is_timedelta64_dtype(rvalues)
-                                 or (not self.is_datetime_rhs
-                                     and pd._np_version_under1p7))
+        self.is_timedelta_rhs = com.is_timedelta64_dtype(rvalues)
         self.is_integer_rhs = rvalues.dtype.kind in ('i', 'u')
 
         self._validate()
@@ -318,7 +316,7 @@ class _TimeOp(object):
         """converts values to ndarray"""
         from pandas.tseries.timedeltas import _possibly_cast_to_timedelta
 
-        coerce = 'compat' if pd._np_version_under1p7 else True
+        coerce = True
         if not is_list_like(values):
             values = np.array([values])
         inferred_type = lib.infer_dtype(values)
@@ -331,12 +329,12 @@ class _TimeOp(object):
                 values = np.empty(values.shape, dtype=other.dtype)
                 values[:] = tslib.iNaT
 
-            # a datetlike
+            # a datelike
+            elif isinstance(values, pd.DatetimeIndex):
+                values = values.to_series()
             elif not (isinstance(values, (pa.Array, pd.Series)) and
                       com.is_datetime64_dtype(values)):
                 values = tslib.array_to_datetime(values)
-            elif isinstance(values, pd.DatetimeIndex):
-                values = values.to_series()
         elif inferred_type in ('timedelta', 'timedelta64'):
             # have a timedelta, convert to to ns here
             values = _possibly_cast_to_timedelta(values, coerce=coerce, dtype='timedelta64[ns]')
@@ -451,11 +449,11 @@ def _arith_method_SERIES(op, name, str_rep, fill_zeros=None,
             result = expressions.evaluate(op, str_rep, x, y,
                                           raise_on_error=True, **eval_kwargs)
         except TypeError:
-            if isinstance(y, (pa.Array, pd.Series)):
+            if isinstance(y, (pa.Array, pd.Series, pd.Index)):
                 dtype = np.find_common_type([x.dtype, y.dtype], [])
                 result = np.empty(x.size, dtype=dtype)
                 mask = notnull(x) & notnull(y)
-                result[mask] = op(x[mask], y[mask])
+                result[mask] = op(x[mask], _values_from_object(y[mask]))
             elif isinstance(x, pa.Array):
                 result = pa.empty(len(x), dtype=x.dtype)
                 mask = notnull(x)
@@ -524,6 +522,10 @@ def _comp_method_SERIES(op, name, str_rep, masker=False):
     code duplication.
     """
     def na_op(x, y):
+        if com.is_categorical_dtype(x) != com.is_categorical_dtype(y):
+            msg = "Cannot compare a Categorical for op {op} with type {typ}. If you want to \n" \
+                  "compare values, use 'series <op> np.asarray(cat)'."
+            raise TypeError(msg.format(op=op,typ=type(y)))
         if x.dtype == np.object_:
             if isinstance(y, list):
                 y = lib.list_to_object_array(y)
@@ -555,17 +557,22 @@ def _comp_method_SERIES(op, name, str_rep, masker=False):
                                      index=self.index, name=name)
         elif isinstance(other, pd.DataFrame):  # pragma: no cover
             return NotImplemented
-        elif isinstance(other, (pa.Array, pd.Series)):
+        elif isinstance(other, (pa.Array, pd.Index)):
             if len(self) != len(other):
                 raise ValueError('Lengths must match to compare')
             return self._constructor(na_op(self.values, np.asarray(other)),
                                      index=self.index).__finalize__(self)
+        elif isinstance(other, pd.Categorical):
+            if not com.is_categorical_dtype(self):
+                msg = "Cannot compare a Categorical for op {op} with Series of dtype {typ}.\n"\
+                      "If you want to compare values, use 'series <op> np.asarray(other)'."
+                raise TypeError(msg.format(op=op,typ=self.dtype))
         else:
 
             mask = isnull(self)
 
             values = self.get_values()
-            other = _index.convert_scalar(values, other)
+            other = _index.convert_scalar(values,_values_from_object(other))
 
             if issubclass(values.dtype.type, np.datetime64):
                 values = values.view('i8')
@@ -648,13 +655,7 @@ def _radd_compat(left, right):
     try:
         output = radd(left, right)
     except TypeError:
-        cond = (pd._np_version_under1p6 and
-                left.dtype == np.object_)
-        if cond:  # pragma: no cover
-            output = np.empty_like(left)
-            output.flat[:] = [radd(x, right) for x in left.flat]
-        else:
-            raise
+        raise
 
     return output
 

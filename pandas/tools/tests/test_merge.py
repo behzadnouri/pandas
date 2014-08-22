@@ -10,7 +10,7 @@ import random
 
 import pandas as pd
 from pandas.compat import range, lrange, lzip, zip, StringIO
-from pandas import compat, _np_version_under1p7
+from pandas import compat
 from pandas.tseries.index import DatetimeIndex
 from pandas.tools.merge import merge, concat, ordered_merge, MergeError
 from pandas.util.testing import (assert_frame_equal, assert_series_equal,
@@ -781,6 +781,16 @@ class TestMerge(tm.TestCase):
                               1: nan}})[['i1', 'i2', 'i1_', 'i3']]
         assert_frame_equal(result, expected)
 
+    def test_merge_type(self):
+        class NotADataFrame(DataFrame):
+            @property
+            def _constructor(self):
+                return NotADataFrame
+
+        nad = NotADataFrame(self.df)
+        result = nad.merge(self.df2, on='key1')
+
+        tm.assert_isinstance(result, NotADataFrame)
 
     def test_append_dtype_coerce(self):
 
@@ -812,7 +822,6 @@ class TestMerge(tm.TestCase):
 
         # timedelta64 issues with join/merge
         # GH 5695
-        tm._skip_if_not_numpy17_friendly()
 
         d = {'d': dt.datetime(2013, 11, 5, 5, 56), 't': dt.timedelta(0, 22500)}
         df = DataFrame(columns=list('dt'))
@@ -930,8 +939,8 @@ class TestMergeMulti(tm.TestCase):
 
         expected = left.copy()
         expected['v2'] = np.nan
-        expected['v2'][(expected.k1 == 2) & (expected.k2 == 'bar')] = 5
-        expected['v2'][(expected.k1 == 1) & (expected.k2 == 'foo')] = 7
+        expected.loc[(expected.k1 == 2) & (expected.k2 == 'bar'),'v2'] = 5
+        expected.loc[(expected.k1 == 1) & (expected.k2 == 'foo'),'v2'] = 7
 
         tm.assert_frame_equal(result, expected)
 
@@ -948,8 +957,8 @@ class TestMergeMulti(tm.TestCase):
 
         expected = left.copy()
         expected['v2'] = np.nan
-        expected['v2'][(expected.k1 == 2) & (expected.k2 == 'bar')] = 5
-        expected['v2'][(expected.k1 == 1) & (expected.k2 == 'foo')] = 7
+        expected.loc[(expected.k1 == 2) & (expected.k2 == 'bar'),'v2'] = 5
+        expected.loc[(expected.k1 == 1) & (expected.k2 == 'foo'),'v2'] = 7
 
         tm.assert_frame_equal(result, expected)
 
@@ -1068,8 +1077,8 @@ class TestMergeMulti(tm.TestCase):
             if dtype2.kind == 'i':
                 dtype2 = np.dtype('float64')
             expected['v2'] = np.array(np.nan,dtype=dtype2)
-            expected['v2'][(expected.k1 == 2) & (expected.k2 == 'bar')] = 5
-            expected['v2'][(expected.k1 == 1) & (expected.k2 == 'foo')] = 7
+            expected.loc[(expected.k1 == 2) & (expected.k2 == 'bar'),'v2'] = 5
+            expected.loc[(expected.k1 == 1) & (expected.k2 == 'foo'),'v2'] = 7
 
             tm.assert_frame_equal(result, expected)
 
@@ -1775,7 +1784,7 @@ class TestConcatenate(tm.TestCase):
 
         expected = df.ix[:, ['a', 'b', 'c', 'd', 'foo']]
         expected['foo'] = expected['foo'].astype('O')
-        expected['foo'][:5] = 'bar'
+        expected.loc[0:4,'foo'] = 'bar'
 
         tm.assert_frame_equal(concatted, expected)
 
@@ -2095,9 +2104,6 @@ class TestConcatenate(tm.TestCase):
         self.assertTrue((result.iloc[10:]['time'] == rng).all())
 
     def test_concat_timedelta64_block(self):
-
-        # not friendly for < 1.7
-        tm._skip_if_not_numpy17_friendly()
         from pandas import to_timedelta
 
         rng = to_timedelta(np.arange(10),unit='s')
@@ -2245,6 +2251,18 @@ class TestOrderedMerge(tm.TestCase):
 
         result = ordered_merge(left, self.right, on='key', left_by='group')
         self.assertTrue(result['group'].notnull().all())
+
+    def test_merge_type(self):
+        class NotADataFrame(DataFrame):
+            @property
+            def _constructor(self):
+                return NotADataFrame
+
+        nad = NotADataFrame(self.left)
+        result = nad.merge(self.right, on='key')
+
+        tm.assert_isinstance(result, NotADataFrame)
+
 
 if __name__ == '__main__':
     nose.runmodule(argv=[__file__, '-vvs', '-x', '--pdb', '--pdb-failure'],

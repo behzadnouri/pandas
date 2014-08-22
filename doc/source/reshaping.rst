@@ -160,6 +160,20 @@ the level numbers:
 
    stacked.unstack('second')
 
+Notice that the ``stack`` and ``unstack`` methods implicitly sort the index
+levels involved. Hence a call to ``stack`` and then ``unstack``, or viceversa,
+will result in a **sorted** copy of the original DataFrame or Series:
+
+.. ipython:: python
+
+   index = MultiIndex.from_product([[2,1], ['a', 'b']])
+   df = DataFrame(randn(4), index=index, columns=['A'])
+   df
+   all(df.unstack().stack() == df.sort())
+
+while the above code will raise a ``TypeError`` if the call to ``sort`` is
+removed.
+
 .. _reshaping.stack_multiple:
 
 Multiple Levels
@@ -204,6 +218,8 @@ calling ``sortlevel``, of course). Here is a more complex example:
    columns = MultiIndex.from_tuples([('A', 'cat'), ('B', 'dog'),
                                      ('B', 'cat'), ('A', 'dog')],
                                     names=['exp', 'animal'])
+   index = MultiIndex.from_product([('bar', 'baz', 'foo', 'qux'), ('one', 'two')],
+                                   names=['first', 'second'])
    df = DataFrame(randn(8, 4), index=index, columns=columns)
    df2 = df.ix[[0, 1, 2, 4, 5, 7]]
    df2
@@ -489,3 +505,10 @@ handling of NaN:
 
    pd.factorize(x, sort=True)
    np.unique(x, return_inverse=True)[::-1]
+
+.. note::
+    If you just want to handle one column as a categorical variable (like R's factor),
+    you can use  ``df["cat_col"] = pd.Categorical(df["col"])`` or
+    ``df["cat_col"] = df["col"].astype("category")``. For full docs on :class:`~pandas.Categorical`,
+    see the :ref:`Categorical introduction <categorical>` and the
+    :ref:`API documentation <api.categorical>`. This feature was introduced in version 0.15.

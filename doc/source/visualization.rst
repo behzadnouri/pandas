@@ -123,9 +123,10 @@ a handful of values for plots other than the default Line plot.
 These include:
 
 * :ref:`'bar' <visualization.barplot>` or :ref:`'barh' <visualization.barplot>` for bar plots
+* :ref:`'hist' <visualization.hist>` for histogram
 * :ref:`'kde' <visualization.kde>` or ``'density'`` for density plots
 * :ref:`'area' <visualization.area_plot>` for area plots
-* :ref:`'scatter' <visualization.scatter_matrix>` for scatter plots
+* :ref:`'scatter' <visualization.scatter>` for scatter plots
 * :ref:`'hexbin' <visualization.hexbin>` for hexagonal bin plots
 * :ref:`'pie' <visualization.pie>` for pie plots
 
@@ -205,6 +206,46 @@ To get horizontal bar plots, pass ``kind='barh'``:
 
 Histograms
 ~~~~~~~~~~
+
+.. versionadded:: 0.15.0
+
+Histogram can be drawn specifying ``kind='hist'``.
+
+.. ipython:: python
+
+   df4 = DataFrame({'a': randn(1000) + 1, 'b': randn(1000),
+                    'c': randn(1000) - 1}, columns=['a', 'b', 'c'])
+
+   plt.figure();
+
+   @savefig hist_new.png
+   df4.plot(kind='hist', alpha=0.5)
+
+Histogram can be stacked by ``stacked=True``. Bin size can be changed by ``bins`` keyword.
+
+.. ipython:: python
+
+   plt.figure();
+
+   @savefig hist_new_stacked.png
+   df4.plot(kind='hist', stacked=True, bins=20)
+
+You can pass other keywords supported by matplotlib ``hist``. For example, horizontal and cumulative histgram can be drawn by ``orientation='horizontal'`` and ``cumulative='True'``.
+
+.. ipython:: python
+
+   plt.figure();
+
+   @savefig hist_new_kwargs.png
+   df4['a'].plot(kind='hist', orientation='horizontal', cumulative=True)
+
+
+See the :meth:`hist <matplotlib.axes.Axes.hist>` method and the
+`matplotlib hist documenation <http://matplotlib.org/api/pyplot_api.html#matplotlib.pyplot.hist>`__ for more.
+
+
+The previous interface ``DataFrame.hist`` to plot histogram still can be used.
+
 .. ipython:: python
 
    plt.figure();
@@ -385,6 +426,52 @@ To produce an unstacked plot, pass ``stacked=False``. Alpha value is set to 0.5 
 
    @savefig area_plot_unstacked.png
    df.plot(kind='area', stacked=False);
+
+.. _visualization.scatter:
+
+Scatter Plot
+~~~~~~~~~~~~
+
+.. versionadded:: 0.13
+
+You can create scatter plots with ``DataFrame.plot`` by passing ``kind='scatter'``.
+Scatter plot requires numeric columns for x and y axis.
+These can be specified by ``x`` and ``y`` keywords each.
+
+.. ipython:: python
+   :suppress:
+
+   np.random.seed(123456)
+   plt.figure()
+
+.. ipython:: python
+
+   df = DataFrame(rand(50, 4), columns=['a', 'b', 'c', 'd'])
+
+   @savefig scatter_plot.png
+   df.plot(kind='scatter', x='a', y='b');
+
+To plot multiple column groups in a single axes, repeat ``plot`` method specifying target ``ax``.
+It is recommended to specify ``color`` and ``label`` keywords to distinguish each groups.
+
+.. ipython:: python
+
+   ax = df.plot(kind='scatter', x='a', y='b',
+                color='DarkBlue', label='Group 1');
+   @savefig scatter_plot_repeated.png
+   df.plot(kind='scatter', x='c', y='d',
+           color='DarkGreen', label='Group 2', ax=ax);
+
+You can pass other keywords supported by matplotlib ``scatter``.
+Below example shows a bubble chart using a dataframe column values as bubble size.
+
+.. ipython:: python
+
+   @savefig scatter_plot_bubble.png
+   df.plot(kind='scatter', x='a', y='b', s=df['c']*200);
+
+See the :meth:`scatter <matplotlib.axes.Axes.scatter>` method and the
+`matplotlib scatter documenation <http://matplotlib.org/api/pyplot_api.html#matplotlib.pyplot.scatter>`__ for more.
 
 .. _visualization.hexbin:
 
@@ -905,10 +992,41 @@ with the ``subplots`` keyword:
    @savefig frame_plot_subplots.png
    df.plot(subplots=True, figsize=(6, 6));
 
-Targeting Different Subplots
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Using Layout and Targetting Multiple Axes
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You can pass an ``ax`` argument to :meth:`Series.plot` to plot on a particular axis:
+The layout of subplots can be specified by ``layout`` keyword. It can accept
+``(rows, columns)``. The ``layout`` keyword can be used in
+``hist`` and ``boxplot`` also. If input is invalid, ``ValueError`` will be raised.
+
+The number of axes which can be contained by rows x columns specified by ``layout`` must be
+larger than the number of required subplots. If layout can contain more axes than required,
+blank axes are not drawn.
+
+.. ipython:: python
+
+   @savefig frame_plot_subplots_layout.png
+   df.plot(subplots=True, layout=(2, 3), figsize=(6, 6));
+
+Also, you can pass multiple axes created beforehand as list-like via ``ax`` keyword.
+This allows to use more complicated layout.
+The passed axes must be the same number as the subplots being drawn.
+
+When multiple axes are passed via ``ax`` keyword, ``layout``, ``sharex`` and ``sharey`` keywords are ignored.
+These must be configured when creating axes.
+
+.. ipython:: python
+
+   fig, axes = plt.subplots(4, 4, figsize=(6, 6));
+   plt.adjust_subplots(wspace=0.5, hspace=0.5);
+   target1 = [axes[0][0], axes[1][1], axes[2][2], axes[3][3]]
+   target2 = [axes[3][0], axes[2][1], axes[1][2], axes[0][3]]
+
+   df.plot(subplots=True, ax=target1, legend=False);
+   @savefig frame_plot_subplots_multi_ax.png
+   (-df).plot(subplots=True, ax=target2, legend=False);
+
+Another option is passing an ``ax`` argument to :meth:`Series.plot` to plot on a particular axis:
 
 .. ipython:: python
    :suppress:
@@ -923,12 +1041,12 @@ You can pass an ``ax`` argument to :meth:`Series.plot` to plot on a particular a
 .. ipython:: python
 
    fig, axes = plt.subplots(nrows=2, ncols=2)
-   df['A'].plot(ax=axes[0,0]); axes[0,0].set_title('A')
-   df['B'].plot(ax=axes[0,1]); axes[0,1].set_title('B')
-   df['C'].plot(ax=axes[1,0]); axes[1,0].set_title('C')
+   df['A'].plot(ax=axes[0,0]); axes[0,0].set_title('A');
+   df['B'].plot(ax=axes[0,1]); axes[0,1].set_title('B');
+   df['C'].plot(ax=axes[1,0]); axes[1,0].set_title('C');
 
    @savefig series_plot_multi.png
-   df['D'].plot(ax=axes[1,1]); axes[1,1].set_title('D')
+   df['D'].plot(ax=axes[1,1]); axes[1,1].set_title('D');
 
 .. ipython:: python
    :suppress:
@@ -1038,7 +1156,7 @@ colors are selected based on an even spacing determined by the number of columns
 in the DataFrame. There is no consideration made for background color, so some
 colormaps will produce lines that are not easily visible.
 
-To use the cubhelix colormap, we can simply pass ``'cubehelix'`` to ``colormap=``
+To use the cubehelix colormap, we can simply pass ``'cubehelix'`` to ``colormap=``
 
 .. ipython:: python
    :suppress:

@@ -4,7 +4,7 @@
 .. ipython:: python
    :suppress:
 
-   from datetime import datetime
+   from datetime import datetime, timedelta
    import numpy as np
    np.random.seed(123456)
    from pandas import *
@@ -444,6 +444,7 @@ There are several time/date properties that one can access from ``Timestamp`` or
     is_year_start,"Logical indicating if first day of year (defined by frequency)"
     is_year_end,"Logical indicating if last day of year (defined by frequency)"
 
+Furthermore, if you have a ``Series`` with datetimelike values, then you can access these properties via the ``.dt`` accessor, see the :ref:`docs <basics.dt_accessors>`
 
 DateOffset objects
 ------------------
@@ -1098,6 +1099,36 @@ frequency.
 
    p - 3
 
+If ``Period`` freq is daily or higher (``D``, ``H``, ``T``, ``S``, ``L``, ``U``, ``N``), ``offsets`` and ``timedelta``-like can be added if the result can have same freq. Otherise, ``ValueError`` will be raised.
+
+.. ipython:: python
+
+   p = Period('2014-07-01 09:00', freq='H')
+   p + Hour(2)
+   p + timedelta(minutes=120)
+   p + np.timedelta64(7200, 's')
+
+.. code-block:: python
+
+   In [1]: p + Minute(5)
+   Traceback
+      ...
+   ValueError: Input has different freq from Period(freq=H)
+
+If ``Period`` has other freqs, only the same ``offsets`` can be added. Otherwise, ``ValueError`` will be raised.
+
+.. ipython:: python
+
+   p = Period('2014-07', freq='M')
+   p + MonthEnd(3)
+
+.. code-block:: python
+
+   In [1]: p + MonthBegin(3)
+   Traceback
+      ...
+   ValueError: Input has different freq from Period(freq=M)
+
 Taking the difference of ``Period`` instances with the same frequency will
 return the number of frequency units between them:
 
@@ -1128,6 +1159,18 @@ objects:
 
    ps = Series(randn(len(prng)), prng)
    ps
+
+``PeriodIndex`` supports addition and subtraction as the same rule as ``Period``.
+
+.. ipython:: python
+
+   idx = period_range('2014-07-01 09:00', periods=5, freq='H')
+   idx
+   idx + Hour(2)
+
+   idx = period_range('2014-07', periods=5, freq='M')
+   idx
+   idx + MonthEnd(3)
 
 PeriodIndex Partial String Indexing
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1272,6 +1315,39 @@ the quarter end:
 
    ts.head()
 
+.. _timeseries.oob:
+
+Representing out-of-bounds spans
+--------------------------------
+
+If you have data that is outside of the ``Timestamp`` bounds, see :ref:`Timestamp limitations <gotchas.timestamp-limits>`,
+then you can use a ``PeriodIndex`` and/or ``Series`` of ``Periods`` to do computations.
+
+.. ipython:: python
+
+   span = period_range('1215-01-01', '1381-01-01', freq='D')
+   span
+
+To convert from a ``int64`` based YYYYMMDD representation.
+
+.. ipython:: python
+
+   s = Series([20121231, 20141130, 99991231])
+   s
+
+   def conv(x):
+       return Period(year = x // 10000, month = x//100 % 100, day = x%100, freq='D')
+
+   s.apply(conv)
+   s.apply(conv)[2]
+
+These can easily be converted to a ``PeriodIndex``
+
+.. ipython:: python
+
+   span = PeriodIndex(s.apply(conv))
+   span
+
 .. _timeseries.timezone:
 
 Time Zone Handling
@@ -1355,14 +1431,20 @@ tz-aware data to another time zone:
 
 	Be wary of conversions between libraries. For some zones ``pytz`` and ``dateutil`` have different
 	definitions of the zone. This is more of a problem for unusual timezones than for
-	'standard' zones like ``US/Eastern``.  
+	'standard' zones like ``US/Eastern``.
 
-.. warning:: 
+.. warning::
 
-       Be aware that a timezone definition across versions of timezone libraries may not 
-       be considered equal.  This may cause problems when working with stored data that 
-       is localized using one version and operated on with a different version.  
+       Be aware that a timezone definition across versions of timezone libraries may not
+       be considered equal.  This may cause problems when working with stored data that
+       is localized using one version and operated on with a different version.
        See :ref:`here<io.hdf5-notes>` for how to handle such a situation.
+
+.. warning::
+
+       It is incorrect to pass a timezone directly into the ``datetime.datetime`` constructor (e.g.,
+       ``datetime.datetime(2011, 1, 1, tz=timezone('US/Eastern'))``.  Instead, the datetime
+       needs to be localized using the the localize method on the timezone.
 
 Under the hood, all timestamps are stored in UTC. Scalar values from a
 ``DatetimeIndex`` with a time zone will have their fields (day, hour, minute)
@@ -1420,6 +1502,19 @@ to determine the right offset.
    rng_hourly.tz_localize('US/Eastern')
    rng_hourly_eastern = rng_hourly.tz_localize('US/Eastern', infer_dst=True)
    rng_hourly_eastern.values
+
+
+To remove timezone from tz-aware ``DatetimeIndex``, use ``tz_localize(None)`` or ``tz_convert(None)``. ``tz_localize(None)`` will remove timezone holding local time representations. ``tz_convert(None)`` will remove timezone after converting to UTC time.
+
+.. ipython:: python
+
+   didx = DatetimeIndex(start='2014-08-01 09:00', freq='H', periods=10, tz='US/Eastern')
+   didx
+   didx.tz_localize(None)
+   didx.tz_convert(None)
+
+   # tz_convert(None) is identical with tz_convert('UTC').tz_localize(None)
+   didx.tz_convert('UCT').tz_localize(None)
 
 .. _timeseries.timedeltas:
 
@@ -1590,23 +1685,3 @@ yields another ``timedelta64[ns]`` dtypes Series.
 
    td * -1
    td * Series([1,2,3,4])
-
-Numpy < 1.7 Compatibility
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Numpy < 1.7 has a broken ``timedelta64`` type that does not correctly work
-for arithmetic. pandas bypasses this, but for frequency conversion as above,
-you need to create the divisor yourself. The ``np.timetimedelta64`` type only
-has 1 argument, the number of **micro** seconds.
-
-The following are equivalent statements in the two versions of numpy.
-
-.. code-block:: python
-
-   from distutils.version import LooseVersion
-   if LooseVersion(np.__version__) <= '1.6.2':
-       y / np.timedelta(86400*int(1e6))
-       y / np.timedelta(int(1e6))
-   else:
-       y / np.timedelta64(1,'D')
-       y / np.timedelta64(1,'s')

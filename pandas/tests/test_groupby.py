@@ -25,6 +25,7 @@ from pandas import compat
 from pandas.core.panel import Panel
 from pandas.tools.merge import concat
 from collections import defaultdict
+from functools import partial
 import pandas.core.common as com
 import numpy as np
 
@@ -795,6 +796,41 @@ class TestGroupBy(tm.TestCase):
         transformed = grouped.transform(lambda x: x * x.sum())
         self.assertEqual(transformed[7], 12)
 
+        # GH 8046
+        # make sure that we preserve the input order
+
+        df = DataFrame(np.arange(6,dtype='int64').reshape(3,2), columns=["a","b"], index=[0,2,1])
+        key = [0,0,1]
+        expected = df.sort_index().groupby(key).transform(lambda x: x-x.mean()).groupby(key).mean()
+        result = df.groupby(key).transform(lambda x: x-x.mean()).groupby(key).mean()
+        assert_frame_equal(result, expected)
+
+        def demean(arr):
+            return arr - arr.mean()
+
+        people = DataFrame(np.random.randn(5, 5),
+                           columns=['a', 'b', 'c', 'd', 'e'],
+                           index=['Joe', 'Steve', 'Wes', 'Jim', 'Travis'])
+        key = ['one', 'two', 'one', 'two', 'one']
+        result = people.groupby(key).transform(demean).groupby(key).mean()
+        expected = people.groupby(key).apply(demean).groupby(key).mean()
+        assert_frame_equal(result, expected)
+
+    def test_transform_fast(self):
+
+        df = DataFrame( { 'id' : np.arange( 100000 ) / 3,
+                          'val': np.random.randn( 100000) } )
+
+        grp=df.groupby('id')['val']
+
+        values = np.repeat(grp.mean().values, com._ensure_platform_int(grp.count().values))
+        expected = pd.Series(values,index=df.index)
+        result = grp.transform(np.mean)
+        assert_series_equal(result,expected)
+
+        result = grp.transform('mean')
+        assert_series_equal(result,expected)
+
     def test_transform_broadcast(self):
         grouped = self.ts.groupby(lambda x: x.month)
         result = grouped.transform(np.mean)
@@ -858,12 +894,14 @@ class TestGroupBy(tm.TestCase):
         assert_frame_equal(result, expected)
 
     def test_transform_exclude_nuisance(self):
+
+        # this also tests orderings in transform between
+        # series/frame to make sure its consistent
         expected = {}
         grouped = self.df.groupby('A')
         expected['C'] = grouped['C'].transform(np.mean)
         expected['D'] = grouped['D'].transform(np.mean)
         expected = DataFrame(expected)
-
         result = self.df.groupby('A').transform(np.mean)
 
         assert_frame_equal(result, expected)
@@ -1646,7 +1684,7 @@ class TestGroupBy(tm.TestCase):
                 'B': ['A', 'B'] * 6,
                 'C': np.random.randn(12)}
         df = DataFrame(data)
-        df['C'][2:10:2] = nan
+        df.loc[2:10:2,'C'] = nan
 
         def _testit(op):
             # single column
@@ -2152,6 +2190,10 @@ class TestGroupBy(tm.TestCase):
         result = g.idxmax()
         assert_frame_equal(result,expected)
 
+    def test_cython_api2(self):
+
+        # this takes the fast apply path
+
         # cumsum (GH5614)
         df = DataFrame([[1, 2, np.nan], [1, np.nan, 9], [3, 4, 9]], columns=['A', 'B', 'C'])
         expected = DataFrame([[2, np.nan], [np.nan, 9], [4, 9]], columns=['B', 'C'])
@@ -2424,6 +2466,31 @@ class TestGroupBy(tm.TestCase):
         result = grouped.agg(convert_force_pure)
         self.assertEqual(result.dtype, np.object_)
         tm.assert_isinstance(result[0], Decimal)
+
+    def test_fast_apply(self):
+        # make sure that fast apply is correctly called
+        # rather than raising any kind of error
+        # otherwise the python path will be callsed
+        # which slows things down
+        N = 1000
+        labels = np.random.randint(0, 2000, size=N)
+        labels2 = np.random.randint(0, 3, size=N)
+        df = DataFrame({'key': labels,
+                        'key2': labels2,
+                        'value1': np.random.randn(N),
+                        'value2': ['foo', 'bar', 'baz', 'qux'] * (N // 4)})
+        def f(g):
+            return 1
+
+        g = df.groupby(['key', 'key2'])
+
+        grouper = g.grouper
+
+        splitter = grouper._get_splitter(g._selected_obj, axis=g.axis)
+        group_keys = grouper._get_group_keys()
+
+        values, mutated = splitter.fast_apply(f, group_keys)
+        self.assertFalse(mutated)
 
     def test_apply_with_mixed_dtype(self):
         # GH3480, apply with mixed dtype on axis=1 breaks in 0.11
@@ -2865,6 +2932,24 @@ class TestGroupBy(tm.TestCase):
         assert_frame_equal(result, expected)
         assert_frame_equal(result2, expected)
 
+    def test_agg_callables(self):
+        # GH 7929
+        df = DataFrame({'foo' : [1,2], 'bar' :[3,4]}).astype(np.int64)
+
+        class fn_class(object):
+            def __call__(self, x):
+                return sum(x)
+
+        equiv_callables = [sum, np.sum,
+                           lambda x: sum(x),
+                           lambda x: x.sum(),
+                           partial(sum), fn_class()]
+
+        expected = df.groupby("foo").agg(sum)
+        for ecall in equiv_callables:
+            result = df.groupby('foo').agg(ecall)
+            assert_frame_equal(result, expected)
+
     def test_set_group_name(self):
         def f(group):
             assert group.name is not None
@@ -3073,7 +3158,6 @@ class TestGroupBy(tm.TestCase):
         result = result["a"].values
         exp = np.array([1,2,4,np.nan])
         self.assert_numpy_array_equivalent(result, exp)
-
 
     def test_groupby_first_datetime64(self):
         df = DataFrame([(1, 1351036800000000000), (2, 1351036800000000000)])
@@ -3968,6 +4052,32 @@ class TestGroupBy(tm.TestCase):
         filt = g.filter(lambda x: x['A'].sum() == 2)
         assert_frame_equal(filt, df.iloc[[0, 1]])
 
+    def test_filter_enforces_scalarness(self):
+        df  = pd.DataFrame([
+            ['best', 'a', 'x'],
+            ['worst', 'b', 'y'],
+            ['best', 'c', 'x'],
+            ['best','d', 'y'],
+            ['worst','d', 'y'],
+            ['worst','d', 'y'],
+            ['best','d', 'z'],
+        ], columns=['a', 'b', 'c'])
+        with tm.assertRaisesRegexp(TypeError, 'filter function returned a.*'):
+            df.groupby('c').filter(lambda g: g['a'] == 'best')
+
+    def test_filter_non_bool_raises(self):
+        df  = pd.DataFrame([
+            ['best', 'a', 1],
+            ['worst', 'b', 1],
+            ['best', 'c', 1],
+            ['best','d', 1],
+            ['worst','d', 1],
+            ['worst','d', 1],
+            ['best','d', 1],
+        ], columns=['a', 'b', 'c'])
+        with tm.assertRaisesRegexp(TypeError, 'filter function returned a.*'):
+            df.groupby('a').filter(lambda g: g.c.mean())
+
     def test_index_label_overlaps_location(self):
         # checking we don't have any label/location confusion in the
         # the wake of GH5375
@@ -4444,6 +4554,22 @@ class TestGroupBy(tm.TestCase):
                    index=MultiIndex.from_arrays([list('aaabbb'),
                                                  [0, 4, 1, 6, 7, 8]]))
         tm.assert_series_equal(r, e)
+
+    def test_transform_doesnt_clobber_ints(self):
+        # GH 7972
+        n = 6
+        x = np.arange(n)
+        df = DataFrame({'a': x // 2, 'b': 2.0 * x, 'c': 3.0 * x})
+        df2 = DataFrame({'a': x // 2 * 1.0, 'b': 2.0 * x, 'c': 3.0 * x})
+
+        gb = df.groupby('a')
+        result = gb.transform('mean')
+
+        gb2 = df2.groupby('a')
+        expected = gb2.transform('mean')
+        tm.assert_frame_equal(result, expected)
+
+
 
 
 def assert_fp_equal(a, b):

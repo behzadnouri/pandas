@@ -420,7 +420,12 @@ def read_sql(sql, con, index_col=None, coerce_float=True, params=None,
             sql, index_col=index_col, params=params,
             coerce_float=coerce_float, parse_dates=parse_dates)
 
-    if pandas_sql.has_table(sql):
+    try:
+        _is_table_name = pandas_sql.has_table(sql)
+    except:
+        _is_table_name = False
+
+    if _is_table_name:
         pandas_sql.meta.reflect(only=[sql])
         return pandas_sql.read_table(
             sql, index_col=index_col, coerce_float=coerce_float,
@@ -432,7 +437,7 @@ def read_sql(sql, con, index_col=None, coerce_float=True, params=None,
 
 
 def to_sql(frame, name, con, flavor='sqlite', if_exists='fail', index=True,
-           index_label=None):
+           index_label=None, chunksize=None):
     """
     Write records stored in a DataFrame to a SQL database.
 
@@ -459,6 +464,9 @@ def to_sql(frame, name, con, flavor='sqlite', if_exists='fail', index=True,
         Column label for index column(s). If None is given (default) and
         `index` is True, then the index names are used.
         A sequence should be given if the DataFrame uses MultiIndex.
+    chunksize : int, default None
+        If not None, then rows will be written in batches of this size at a 
+        time.  If None, all rows will be written at once.
 
     """
     if if_exists not in ('fail', 'replace', 'append'):
@@ -472,7 +480,7 @@ def to_sql(frame, name, con, flavor='sqlite', if_exists='fail', index=True,
         raise NotImplementedError
 
     pandas_sql.to_sql(frame, name, if_exists=if_exists, index=index,
-                      index_label=index_label)
+                      index_label=index_label, chunksize=chunksize)
 
 
 def has_table(table_name, con, flavor='sqlite'):
@@ -597,18 +605,30 @@ class PandasSQLTable(PandasObject):
 
         return temp
 
-    def insert(self):
+    def insert(self, chunksize=None):
+
         ins = self.insert_statement()
-        data_list = []
         temp = self.insert_data()
         keys = list(map(str, temp.columns))
 
-        for t in temp.itertuples():
-            data = dict((k, self.maybe_asscalar(v))
-                        for k, v in zip(keys, t[1:]))
-            data_list.append(data)
+        nrows = len(temp)
+        if chunksize is None: 
+            chunksize = nrows
+        chunks = int(nrows / chunksize) + 1
 
-        self.pd_sql.execute(ins, data_list)
+        con = self.pd_sql.engine.connect()
+        with con.begin() as trans:
+            for i in range(chunks):
+                start_i = i * chunksize
+                end_i = min((i + 1) * chunksize, nrows)
+                if start_i >= end_i:
+                    break
+                data_list = []
+                for t in temp.iloc[start_i:end_i].itertuples():
+                    data = dict((k, self.maybe_asscalar(v))
+                                for k, v in zip(keys, t[1:]))
+                    data_list.append(data)
+                con.execute(ins, data_list)
 
     def read(self, coerce_float=True, parse_dates=None, columns=None):
 
@@ -664,20 +684,28 @@ class PandasSQLTable(PandasObject):
         else:
             return None
 
+    def _get_column_names_and_types(self, dtype_mapper):
+        column_names_and_types = []
+        if self.index is not None:
+            for i, idx_label in enumerate(self.index):
+                idx_type = dtype_mapper(
+                    self.frame.index.get_level_values(i).dtype)
+                column_names_and_types.append((idx_label, idx_type))
+
+        column_names_and_types += zip(
+            list(map(str, self.frame.columns)),
+            map(dtype_mapper, self.frame.dtypes)
+            )
+        return column_names_and_types
+
     def _create_table_statement(self):
         from sqlalchemy import Table, Column
 
-        columns = list(map(str, self.frame.columns))
-        column_types = map(self._sqlalchemy_type, self.frame.dtypes)
+        column_names_and_types = \
+            self._get_column_names_and_types(self._sqlalchemy_type)
 
         columns = [Column(name, typ)
-                   for name, typ in zip(columns, column_types)]
-
-        if self.index is not None:
-            for i, idx_label in enumerate(self.index[::-1]):
-                idx_type = self._sqlalchemy_type(
-                    self.frame.index.get_level_values(i))
-                columns.insert(0, Column(idx_label, idx_type, index=True))
+                   for name, typ in column_names_and_types]
 
         return Table(self.name, self.pd_sql.meta, *columns)
 
@@ -835,11 +863,11 @@ class PandasSQLAlchemy(PandasSQL):
         return data_frame
 
     def to_sql(self, frame, name, if_exists='fail', index=True,
-               index_label=None):
+               index_label=None, chunksize=None):
         table = PandasSQLTable(
             name, self, frame=frame, index=index, if_exists=if_exists,
             index_label=index_label)
-        table.insert()
+        table.insert(chunksize)
 
     @property
     def tables(self):
@@ -940,33 +968,41 @@ class PandasSQLTableLegacy(PandasSQLTable):
             self.name, col_names, wildcards)
         return insert_statement
 
-    def insert(self):
+    def insert(self, chunksize=None):
+
         ins = self.insert_statement()
         temp = self.insert_data()
-        data_list = []
 
-        for t in temp.itertuples():
-            data = tuple((self.maybe_asscalar(v) for v in t[1:]))
-            data_list.append(data)
+        nrows = len(temp)
+        if chunksize is None: 
+            chunksize = nrows
+        chunks = int(nrows / chunksize) + 1
 
-        cur = self.pd_sql.con.cursor()
-        cur.executemany(ins, data_list)
-        cur.close()
-        self.pd_sql.con.commit()
+        with self.pd_sql.con:
+            for i in range(chunks):
+                start_i = i * chunksize
+                end_i = min((i + 1) * chunksize, nrows)
+                if start_i >= end_i:
+                    break
+                data_list = []
+                for t in temp.iloc[start_i:end_i].itertuples():
+                    data = tuple((self.maybe_asscalar(v) for v in t[1:]))
+                    data_list.append(data)
+
+                cur = self.pd_sql.con.cursor()
+                cur.executemany(ins, data_list)
+                cur.close()
 
     def _create_table_statement(self):
         "Return a CREATE TABLE statement to suit the contents of a DataFrame."
 
-        columns = list(map(str, self.frame.columns))
-        pat = re.compile('\s+')
-        if any(map(pat.search, columns)):
-            warnings.warn(_SAFE_NAMES_WARNING)
-        column_types = [self._sql_type_name(typ) for typ in self.frame.dtypes]
+        column_names_and_types = \
+            self._get_column_names_and_types(self._sql_type_name)
 
-        if self.index is not None:
-            for i, idx_label in enumerate(self.index[::-1]):
-                columns.insert(0, idx_label)
-                column_types.insert(0, self._sql_type_name(self.frame.index.get_level_values(i).dtype))
+        pat = re.compile('\s+')
+        column_names = [col_name for col_name, _ in column_names_and_types]
+        if any(map(pat.search, column_names)):
+            warnings.warn(_SAFE_NAMES_WARNING)
 
         flv = self.pd_sql.flavor
 
@@ -976,7 +1012,7 @@ class PandasSQLTableLegacy(PandasSQLTable):
         col_template = br_l + '%s' + br_r + ' %s'
 
         columns = ',\n  '.join(col_template %
-                               x for x in zip(columns, column_types))
+                               x for x in column_names_and_types)
         template = """CREATE TABLE %(name)s (
                       %(columns)s
                       )"""
@@ -1064,7 +1100,7 @@ class PandasSQLLegacy(PandasSQL):
         return result
 
     def to_sql(self, frame, name, if_exists='fail', index=True,
-               index_label=None):
+               index_label=None, chunksize=None):
         """
         Write records stored in a DataFrame to a SQL database.
 
@@ -1082,7 +1118,7 @@ class PandasSQLLegacy(PandasSQL):
         table = PandasSQLTableLegacy(
             name, self, frame=frame, index=index, if_exists=if_exists,
             index_label=index_label)
-        table.insert()
+        table.insert(chunksize)
 
     def has_table(self, name):
         flavor_map = {

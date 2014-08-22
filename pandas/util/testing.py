@@ -41,7 +41,7 @@ from pandas import bdate_range
 from pandas.tseries.index import DatetimeIndex
 from pandas.tseries.period import PeriodIndex
 
-from pandas import _testing, _np_version_under1p7
+from pandas import _testing
 
 
 from pandas.io.common import urlopen
@@ -98,7 +98,14 @@ class TestCase(unittest.TestCase):
             return
         raise AssertionError('{0} is not equal to {1}.'.format(np_array, assert_equal))
 
-    def assert_numpy_array_equivalent(self, np_array, assert_equal):
+    def round_trip_pickle(self, obj, path=None):
+        if path is None:
+            path = u('__%s__.pickle' % rands(10))
+        with ensure_clean(path) as path:
+            pd.to_pickle(obj, path)
+            return pd.read_pickle(path)
+
+    def assert_numpy_array_equivalent(self, np_array, assert_equal, strict_nan=False):
         """Checks that 'np_array' is equivalent to 'assert_equal'
 
         Two numpy arrays are equivalent if the arrays have equal non-NaN elements, and
@@ -108,7 +115,7 @@ class TestCase(unittest.TestCase):
         similar to `assert_numpy_array_equal()`. If the expected array includes `np.nan` use this
         function.
         """
-        if array_equivalent(np_array, assert_equal):
+        if array_equivalent(np_array, assert_equal, strict_nan=strict_nan):
             return
         raise AssertionError('{0} is not equivalent to {1}.'.format(np_array, assert_equal))
 
@@ -218,11 +225,6 @@ def mplskip(cls):
     cls.setUpClass = setUpClass
     return cls
 
-def _skip_if_not_numpy17_friendly():
-    # not friendly for < 1.7
-    if _np_version_under1p7:
-        import nose
-        raise nose.SkipTest("numpy >= 1.7 is required")
 
 def _skip_if_no_scipy():
     try:
@@ -344,7 +346,6 @@ def get_locales(prefix=None, normalize=True,
         # raw_locales is "\n" seperated list of locales
         # it may contain non-decodable parts, so split
         # extract what we can and then rejoin.
-        locales = raw_locales.split(b'\n')
         raw_locales = []
         for x in raw_locales:
             try:
@@ -607,9 +608,12 @@ def assert_series_equal(left, right, check_dtype=True,
     else:
         assert_index_equal(left.index, right.index)
     if check_index_type:
-        assert_isinstance(left.index, type(right.index))
-        assert_attr_equal('dtype', left.index, right.index)
-        assert_attr_equal('inferred_type', left.index, right.index)
+        for level in range(left.index.nlevels):
+            lindex = left.index.get_level_values(level)
+            rindex = right.index.get_level_values(level)
+            assert_isinstance(lindex, type(rindex))
+            assert_attr_equal('dtype', lindex, rindex)
+            assert_attr_equal('inferred_type', lindex, rindex)
 
 # This could be refactored to use the NDFrame.equals method
 def assert_frame_equal(left, right, check_dtype=True,
@@ -656,9 +660,12 @@ def assert_frame_equal(left, right, check_dtype=True,
                                 check_exact=check_exact)
 
     if check_index_type:
-        assert_isinstance(left.index, type(right.index))
-        assert_attr_equal('dtype', left.index, right.index)
-        assert_attr_equal('inferred_type', left.index, right.index)
+        for level in range(left.index.nlevels):
+            lindex = left.index.get_level_values(level)
+            rindex = right.index.get_level_values(level)
+            assert_isinstance(lindex, type(rindex))
+            assert_attr_equal('dtype', lindex, rindex)
+            assert_attr_equal('inferred_type', lindex, rindex)
     if check_column_type:
         assert_isinstance(left.columns, type(right.columns))
         assert_attr_equal('dtype', left.columns, right.columns)
@@ -1224,7 +1231,7 @@ _network_errno_vals = (
 # and conditionally raise on these exception types
 _network_error_classes = (IOError, httplib.HTTPException)
 
-if sys.version_info[:2] >= (3,3):
+if sys.version_info >= (3, 3):
     _network_error_classes += (TimeoutError,)
 
 def can_connect(url, error_classes=_network_error_classes):

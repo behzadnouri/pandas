@@ -14,7 +14,7 @@ from pandas.util.testing import (assert_almost_equal,
                                  assertRaisesRegexp)
 import pandas.core.common as com
 import pandas.util.testing as tm
-from pandas.compat import (range, lrange, StringIO, lzip, u, cPickle,
+from pandas.compat import (range, lrange, StringIO, lzip, u,
                                 product as cart_product, zip)
 import pandas as pd
 
@@ -181,8 +181,7 @@ class TestMultiLevel(tm.TestCase):
     def test_pickle(self):
 
         def _test_roundtrip(frame):
-            pickled = cPickle.dumps(frame)
-            unpickled = cPickle.loads(pickled)
+            unpickled = self.round_trip_pickle(frame)
             assert_frame_equal(frame, unpickled)
 
         _test_roundtrip(self.frame)
@@ -445,6 +444,7 @@ class TestMultiLevel(tm.TestCase):
             ]
         df = DataFrame(acc, columns=['a1','a2','cnt']).set_index(['a1','a2'])
         expected = DataFrame({ 'cnt' : [24,26,25,26] }, index=Index(['xbcde',np.nan,'zbcde','ybcde'],name='a2'))
+
         result = df.xs('z',level='a1')
         assert_frame_equal(result, expected)
 
@@ -2031,6 +2031,20 @@ Thur,Lunch,Yes,51.51,17"""
         result = df.loc[('foo','bar')]
         assert_frame_equal(result,expected)
 
+    def test_duplicated_drop_duplicates(self):
+        # GH 4060
+        idx = MultiIndex.from_arrays(([1, 2, 3, 1, 2 ,3], [1, 1, 1, 1, 2, 2]))
+
+        expected = Index([False, False, False, True, False, False])
+        tm.assert_index_equal(idx.duplicated(), expected)
+        expected = MultiIndex.from_arrays(([1, 2, 3, 2 ,3], [1, 1, 1, 2, 2]))
+        tm.assert_index_equal(idx.drop_duplicates(), expected)
+
+        expected = Index([True, False, False, False, False, False])
+        tm.assert_index_equal(idx.duplicated(take_last=True), expected)
+        expected = MultiIndex.from_arrays(([2, 3, 1, 2 ,3], [1, 1, 1, 2, 2]))
+        tm.assert_index_equal(idx.drop_duplicates(take_last=True), expected)
+
     def test_multiindex_set_index(self):
         # segfault in #3308
         d = {'t1': [2, 2.5, 3], 't2': [4, 5, 6]}
@@ -2106,13 +2120,13 @@ Thur,Lunch,Yes,51.51,17"""
             idx1 = pd.date_range('1/1/2011', periods=5, freq='D', tz=tz, name='idx1')
             idx2 = pd.Index(range(5), name='idx2',dtype='int64')
             idx = pd.MultiIndex.from_arrays([idx1, idx2])
-            df = pd.DataFrame({'a': np.arange(5,dtype='int64'), 'b': ['A', 'B', 'C', 'D', 'E']}, index=idx) 
+            df = pd.DataFrame({'a': np.arange(5,dtype='int64'), 'b': ['A', 'B', 'C', 'D', 'E']}, index=idx)
 
             expected = pd.DataFrame({'idx1': [datetime.datetime(2011, 1, 1),
                                               datetime.datetime(2011, 1, 2),
                                               datetime.datetime(2011, 1, 3),
                                               datetime.datetime(2011, 1, 4),
-                                              datetime.datetime(2011, 1, 5)], 
+                                              datetime.datetime(2011, 1, 5)],
                                      'idx2': np.arange(5,dtype='int64'),
                                      'a': np.arange(5,dtype='int64'), 'b': ['A', 'B', 'C', 'D', 'E']},
                                      columns=['idx1', 'idx2', 'a', 'b'])
@@ -2122,19 +2136,19 @@ Thur,Lunch,Yes,51.51,17"""
 
             idx3 = pd.date_range('1/1/2012', periods=5, freq='MS', tz='Europe/Paris', name='idx3')
             idx = pd.MultiIndex.from_arrays([idx1, idx2, idx3])
-            df = pd.DataFrame({'a': np.arange(5,dtype='int64'), 'b': ['A', 'B', 'C', 'D', 'E']}, index=idx) 
+            df = pd.DataFrame({'a': np.arange(5,dtype='int64'), 'b': ['A', 'B', 'C', 'D', 'E']}, index=idx)
 
             expected = pd.DataFrame({'idx1': [datetime.datetime(2011, 1, 1),
                                               datetime.datetime(2011, 1, 2),
                                               datetime.datetime(2011, 1, 3),
                                               datetime.datetime(2011, 1, 4),
-                                              datetime.datetime(2011, 1, 5)], 
+                                              datetime.datetime(2011, 1, 5)],
                                      'idx2': np.arange(5,dtype='int64'),
                                      'idx3': [datetime.datetime(2012, 1, 1),
                                               datetime.datetime(2012, 2, 1),
                                               datetime.datetime(2012, 3, 1),
                                               datetime.datetime(2012, 4, 1),
-                                              datetime.datetime(2012, 5, 1)], 
+                                              datetime.datetime(2012, 5, 1)],
                                      'a': np.arange(5,dtype='int64'), 'b': ['A', 'B', 'C', 'D', 'E']},
                                      columns=['idx1', 'idx2', 'idx3', 'a', 'b'])
             expected['idx1'] = expected['idx1'].apply(lambda d: pd.Timestamp(d, tz=tz))
@@ -2148,7 +2162,7 @@ Thur,Lunch,Yes,51.51,17"""
             expected = pd.DataFrame({'level_0': 'a a a b b b'.split(),
                                      'level_1': [datetime.datetime(2013, 1, 1),
                                                  datetime.datetime(2013, 1, 2),
-                                                 datetime.datetime(2013, 1, 3)] * 2, 
+                                                 datetime.datetime(2013, 1, 3)] * 2,
                                      'a': np.arange(6, dtype='int64')},
                                      columns=['level_0', 'level_1', 'a'])
             expected['level_1'] = expected['level_1'].apply(lambda d: pd.Timestamp(d, offset='D', tz=tz))

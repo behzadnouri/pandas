@@ -90,7 +90,7 @@ pip install pandas
 ```
 
 ## Dependencies
-- [NumPy](http://www.numpy.org): 1.6.1 or higher
+- [NumPy](http://www.numpy.org): 1.7.0 or higher
 - [python-dateutil](http://labix.org/python-dateutil): 1.5 or higher
 - [pytz](http://pytz.sourceforge.net)
     - Needed for time zone support with ``pandas.date_range``
@@ -218,7 +218,6 @@ has been under active development since then.
 Since pandas development is related to a number of other scientific
 Python projects, questions are welcome on the scipy-user mailing
 list. Specialized discussions or design issues should take place on
-the pystatsmodels mailing list / Google group, where
-``scikits.statsmodels`` and other libraries will also be discussed:
+the PyData mailing list / Google group:
 
-http://groups.google.com/group/pystatsmodels
+https://groups.google.com/forum/#!forum/pydata

@@ -235,8 +235,8 @@ Constructor
 
    Series
 
-Attributes and underlying data
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Attributes
+~~~~~~~~~~
 **Axes**
   * **index**: axis labels
 
@@ -246,6 +246,14 @@ Attributes and underlying data
    Series.values
    Series.dtype
    Series.ftype
+   Series.shape
+   Series.size
+   Series.nbytes
+   Series.ndim
+   Series.strides
+   Series.itemsize
+   Series.base
+   Series.T
 
 Conversion
 ~~~~~~~~~~
@@ -366,6 +374,8 @@ Reindexing / Selection / Label manipulation
 
    Series.align
    Series.drop
+   Series.drop_duplicates
+   Series.duplicated
    Series.equals
    Series.first
    Series.head
@@ -428,12 +438,47 @@ Time series-related
    Series.tz_convert
    Series.tz_localize
 
+Datetimelike Properties
+~~~~~~~~~~~~~~~~~~~~~~~
+``Series.dt`` can be used to access the values of the series as
+datetimelike and return several properties.
+Due to implementation details the methods show up here as methods of the
+``DatetimeProperties/PeriodProperties`` classes. These can be accessed like ``Series.dt.<property>``.
+
+.. currentmodule:: pandas.tseries.common
+
+.. autosummary::
+   :toctree: generated/
+
+   DatetimeProperties.date
+   DatetimeProperties.time
+   DatetimeProperties.year
+   DatetimeProperties.month
+   DatetimeProperties.day
+   DatetimeProperties.hour
+   DatetimeProperties.minute
+   DatetimeProperties.second
+   DatetimeProperties.microsecond
+   DatetimeProperties.nanosecond
+   DatetimeProperties.second
+   DatetimeProperties.weekofyear
+   DatetimeProperties.dayofweek
+   DatetimeProperties.weekday
+   DatetimeProperties.dayofyear
+   DatetimeProperties.quarter
+   DatetimeProperties.is_month_start
+   DatetimeProperties.is_month_end
+   DatetimeProperties.is_quarter_start
+   DatetimeProperties.is_quarter_end
+   DatetimeProperties.is_year_start
+   DatetimeProperties.is_year_end
+
 String handling
 ~~~~~~~~~~~~~~~
 ``Series.str`` can be used to access the values of the series as
 strings and apply several methods to it. Due to implementation
 details the methods show up here as methods of the
-``StringMethods`` class.
+``StringMethods`` class. These can be acccessed like ``Series.str.<function/property>``.
 
 .. currentmodule:: pandas.core.strings
 
@@ -476,24 +521,25 @@ Categorical
 .. currentmodule:: pandas.core.categorical
 
 If the Series is of dtype ``category``, ``Series.cat`` can be used to access the the underlying
-``Categorical``. This data type is similar to the otherwise underlying numpy array
-and has the following usable methods and properties (all available as
-``Series.cat.<method_or_property>``).
+``Categorical``. This accessor is similar to the ``Series.dt`` or ``Series.str``and has the
+following usable methods and properties (all available as ``Series.cat.<method_or_property>``).
 
+.. autosummary::
+   :toctree: generated/
+
+   Categorical.levels
+   Categorical.ordered
+   Categorical.reorder_levels
+   Categorical.remove_unused_levels
+
+The following methods are considered API when using ``Categorical`` directly:
 
 .. autosummary::
    :toctree: generated/
 
    Categorical
    Categorical.from_codes
-   Categorical.levels
-   Categorical.ordered
-   Categorical.reorder_levels
-   Categorical.remove_unused_levels
-   Categorical.min
-   Categorical.max
-   Categorical.mode
-   Categorical.describe
+   Categorical.codes
 
 ``np.asarray(categorical)`` works by implementing the array interface. Be aware, that this converts
 the Categorical back to a numpy array, so levels and order information is not preserved!
@@ -502,25 +548,6 @@ the Categorical back to a numpy array, so levels and order information is not pr
    :toctree: generated/
 
    Categorical.__array__
-
-To create compatibility with `pandas.Series` and `numpy` arrays, the following (non-API) methods
-are also introduced.
-
-.. autosummary::
-   :toctree: generated/
-
-   Categorical.from_array
-   Categorical.get_values
-   Categorical.copy
-   Categorical.dtype
-   Categorical.ndim
-   Categorical.sort
-   Categorical.equals
-   Categorical.unique
-   Categorical.order
-   Categorical.argsort
-   Categorical.fillna
-
 
 Plotting
 ~~~~~~~~
@@ -1087,23 +1114,54 @@ used before calling these methods directly.**
 
    Index
 
+Attributes
+~~~~~~~~~~
+
+.. autosummary::
+   :toctree: generated/
+
+   Index.values
+   Index.is_monotonic
+   Index.is_unique
+   Index.dtype
+   Index.inferred_type
+   Index.is_all_dates
+   Index.shape
+   Index.size
+   Index.nbytes
+   Index.ndim
+   Index.strides
+   Index.itemsize
+   Index.base
+   Index.T
+
 Modifying and Computations
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 .. autosummary::
    :toctree: generated/
 
+   Index.all
+   Index.any
+   Index.argmin
+   Index.argmax
    Index.copy
    Index.delete
    Index.diff
    Index.sym_diff
    Index.drop
+   Index.drop_duplicates
+   Index.duplicated
    Index.equals
    Index.factorize
    Index.identical
    Index.insert
+   Index.min
+   Index.max
    Index.order
    Index.reindex
    Index.repeat
+   Index.take
+   Index.putmask
    Index.set_names
    Index.unique
    Index.nunique
@@ -1158,14 +1216,6 @@ Selecting
    Index.isin
    Index.slice_indexer
    Index.slice_locs
-
-Properties
-~~~~~~~~~~
-.. autosummary::
-   :toctree: generated/
-
-   Index.is_monotonic
-   Index.is_numeric
 
 .. _api.datetimeindex:
 

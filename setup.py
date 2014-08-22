@@ -35,11 +35,8 @@ except ImportError:
     _have_setuptools = False
 
 setuptools_kwargs = {}
-min_numpy_ver = '1.6'
+min_numpy_ver = '1.7.0'
 if sys.version_info[0] >= 3:
-
-    if sys.version_info[1] >= 3:  # 3.3 needs numpy 1.7+
-        min_numpy_ver = "1.7.0b2"
 
     setuptools_kwargs = {
                          'zip_safe': False,
@@ -53,7 +50,6 @@ if sys.version_info[0] >= 3:
                  "\n$ pip install distribute")
 
 else:
-    min_numpy_ver = '1.6.1'
     setuptools_kwargs = {
         'install_requires': ['python-dateutil',
                             'pytz >= 2011k',
@@ -452,7 +448,8 @@ ext_data = dict(
            'sources': ['pandas/src/datetime/np_datetime.c',
                        'pandas/src/datetime/np_datetime_strings.c']},
     algos={'pyxfile': 'algos',
-           'depends': [srcpath('generated', suffix='.pyx')]},
+           'depends': [srcpath('generated', suffix='.pyx'),
+                       srcpath('join', suffix='.pyx')]},
     parser=dict(pyxfile='parser',
                 depends=['pandas/src/parser/tokenizer.h',
                          'pandas/src/parser/io.h',
@@ -587,6 +584,7 @@ setup(name=DISTNAME,
                                   'tests/data/*.xlsm',
                                   'tests/data/*.table',
                                   'tests/data/*.html',
+                                  'tests/data/html_encoding/*.html',
                                   'tests/test_json/data/*.json'],
                     'pandas.tools': ['tests/*.csv'],
                     'pandas.tests': ['data/*.pickle',

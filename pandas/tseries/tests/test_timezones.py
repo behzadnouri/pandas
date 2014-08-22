@@ -23,8 +23,6 @@ import pandas.util.testing as tm
 from pandas.util.testing import assert_frame_equal
 from pandas.compat import lrange, zip
 
-from pandas import _np_version_under1p7
-
 
 try:
     import pytz
@@ -787,6 +785,64 @@ class TestTimeZoneSupportDateutil(TestTimeZoneSupportPytz):
         # check that the time hasn't changed.
         self.assertEqual(ts, ts.tz_convert(dateutil.tz.tzutc()))
 
+    def test_tslib_tz_convert_trans_pos_plus_1__bug(self):
+        # Regression test for tslib.tz_convert(vals, tz1, tz2).
+        # See https://github.com/pydata/pandas/issues/4496 for details.
+        for freq, n in [('H', 1), ('T', 60), ('S', 3600)]:
+            idx = date_range(datetime(2011, 3, 26, 23), datetime(2011, 3, 27, 1), freq=freq)
+            idx = idx.tz_localize('UTC')
+            idx = idx.tz_convert('Europe/Moscow')
+
+            expected = np.repeat(np.array([3, 4, 5]), np.array([n, n, 1]))
+            self.assert_numpy_array_equal(idx.hour, expected)
+
+    def test_tslib_tz_convert_dst(self):
+        for freq, n in [('H', 1), ('T', 60), ('S', 3600)]:
+            # Start DST
+            idx = date_range('2014-03-08 23:00', '2014-03-09 09:00', freq=freq, tz='UTC')
+            idx = idx.tz_convert('US/Eastern')
+            expected = np.repeat(np.array([18, 19, 20, 21, 22, 23, 0, 1, 3, 4, 5]),
+                                 np.array([n, n, n, n, n, n, n, n, n, n, 1]))
+            self.assert_numpy_array_equal(idx.hour, expected)
+
+            idx = date_range('2014-03-08 18:00', '2014-03-09 05:00', freq=freq, tz='US/Eastern')
+            idx = idx.tz_convert('UTC')
+            expected = np.repeat(np.array([23, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9]),
+                                 np.array([n, n, n, n, n, n, n, n, n, n, 1]))
+            self.assert_numpy_array_equal(idx.hour, expected)
+
+            # End DST
+            idx = date_range('2014-11-01 23:00', '2014-11-02 09:00', freq=freq, tz='UTC')
+            idx = idx.tz_convert('US/Eastern')
+            expected = np.repeat(np.array([19, 20, 21, 22, 23, 0, 1, 1, 2, 3, 4]),
+                                 np.array([n, n, n, n, n, n, n, n, n, n, 1]))
+            self.assert_numpy_array_equal(idx.hour, expected)
+
+            idx = date_range('2014-11-01 18:00', '2014-11-02 05:00', freq=freq, tz='US/Eastern')
+            idx = idx.tz_convert('UTC')
+            expected = np.repeat(np.array([22, 23, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+                                 np.array([n, n, n, n, n, n, n, n, n, n, n, n, 1]))
+            self.assert_numpy_array_equal(idx.hour, expected)
+
+        # daily
+        # Start DST
+        idx = date_range('2014-03-08 00:00', '2014-03-09 00:00', freq='D', tz='UTC')
+        idx = idx.tz_convert('US/Eastern')
+        self.assert_numpy_array_equal(idx.hour, np.array([19, 19]))
+
+        idx = date_range('2014-03-08 00:00', '2014-03-09 00:00', freq='D', tz='US/Eastern')
+        idx = idx.tz_convert('UTC')
+        self.assert_numpy_array_equal(idx.hour, np.array([5, 5]))
+
+        # End DST
+        idx = date_range('2014-11-01 00:00', '2014-11-02 00:00', freq='D', tz='UTC')
+        idx = idx.tz_convert('US/Eastern')
+        self.assert_numpy_array_equal(idx.hour, np.array([20, 20]))
+
+        idx = date_range('2014-11-01 00:00', '2014-11-02 000:00', freq='D', tz='US/Eastern')
+        idx = idx.tz_convert('UTC')
+        self.assert_numpy_array_equal(idx.hour, np.array([4, 4]))
+
 
 class TestTimeZoneCacheKey(tm.TestCase):
     def test_cache_keys_are_distinct_for_pytz_vs_dateutil(self):
@@ -805,6 +861,7 @@ class TestTimeZoneCacheKey(tm.TestCase):
 
 class TestTimeZones(tm.TestCase):
     _multiprocess_can_split_ = True
+    timezones = ['UTC', 'Asia/Tokyo', 'US/Eastern', 'dateutil/US/Pacific']
 
     def setUp(self):
         tm._skip_if_no_pytz()
@@ -823,6 +880,24 @@ class TestTimeZones(tm.TestCase):
         exp = date_range('1/1/2011', periods=100, freq='H', tz='US/Pacific')
 
         self.assertTrue(conv.equals(exp))
+
+    def test_tz_localize_roundtrip(self):
+        for tz in self.timezones:
+            idx1 = date_range(start='2014-01-01', end='2014-12-31', freq='M')
+            idx2 = date_range(start='2014-01-01', end='2014-12-31', freq='D')
+            idx3 = date_range(start='2014-01-01', end='2014-03-01', freq='H')
+            idx4 = date_range(start='2014-08-01', end='2014-10-31', freq='T')
+            for idx in [idx1, idx2, idx3, idx4]:
+                localized = idx.tz_localize(tz)
+                expected = date_range(start=idx[0], end=idx[-1], freq=idx.freq, tz=tz)
+                tm.assert_index_equal(localized, expected)
+
+                with tm.assertRaises(TypeError):
+                    localized.tz_localize(tz)
+
+                reset = localized.tz_localize(None)
+                tm.assert_index_equal(reset, idx)
+                self.assertTrue(reset.tzinfo is None)
 
     def test_series_frame_tz_localize(self):
 
@@ -871,6 +946,29 @@ class TestTimeZones(tm.TestCase):
         rng = date_range('1/1/2011', periods=200, freq='D')
         ts = Series(1, index=rng)
         tm.assertRaisesRegexp(TypeError, "Cannot convert tz-naive", ts.tz_convert, 'US/Eastern')
+
+    def test_tz_convert_roundtrip(self):
+        for tz in self.timezones:
+            idx1 = date_range(start='2014-01-01', end='2014-12-31', freq='M', tz='UTC')
+            exp1 = date_range(start='2014-01-01', end='2014-12-31', freq='M')
+
+            idx2 = date_range(start='2014-01-01', end='2014-12-31', freq='D', tz='UTC')
+            exp2 = date_range(start='2014-01-01', end='2014-12-31', freq='D')
+
+            idx3 = date_range(start='2014-01-01', end='2014-03-01', freq='H', tz='UTC')
+            exp3 = date_range(start='2014-01-01', end='2014-03-01', freq='H')
+
+            idx4 = date_range(start='2014-08-01', end='2014-10-31', freq='T', tz='UTC')
+            exp4 = date_range(start='2014-08-01', end='2014-10-31', freq='T')
+
+
+            for idx, expected in [(idx1, exp1), (idx2, exp2), (idx3, exp3), (idx4, exp4)]:
+                converted = idx.tz_convert(tz)
+                reset = converted.tz_convert(None)
+                tm.assert_index_equal(reset, expected)
+                self.assertTrue(reset.tzinfo is None)
+                tm.assert_index_equal(reset, converted.tz_convert('UTC').tz_localize(None))
+
 
     def test_join_utc_convert(self):
         rng = date_range('1/1/2011', periods=100, freq='H', tz='utc')
@@ -1095,9 +1193,8 @@ class TestTimeZones(tm.TestCase):
 
             offset = dates + offsets.Hour(5)
             self.assertTrue(offset.equals(expected))
-            if not _np_version_under1p7:
-                offset = dates + np.timedelta64(5, 'h')
-                self.assertTrue(offset.equals(expected))
+            offset = dates + np.timedelta64(5, 'h')
+            self.assertTrue(offset.equals(expected))
             offset = dates + timedelta(hours=5)
             self.assertTrue(offset.equals(expected))
 
@@ -1127,14 +1224,13 @@ class TestTimeZones(tm.TestCase):
         expected = ['2010-12-01 05:00', '2010-12-02 05:00', NaT]
         self.assertTrue(idx.equals(DatetimeIndex(expected, tz='US/Pacific')))
 
-        if not _np_version_under1p7:
-            idx = idx + np.timedelta64(3, 'h')
-            expected = ['2010-12-01 08:00', '2010-12-02 08:00', NaT]
-            self.assertTrue(idx.equals(DatetimeIndex(expected, tz='US/Pacific')))
+        idx = idx + np.timedelta64(3, 'h')
+        expected = ['2010-12-01 08:00', '2010-12-02 08:00', NaT]
+        self.assertTrue(idx.equals(DatetimeIndex(expected, tz='US/Pacific')))
 
-            idx = idx.tz_convert('US/Eastern')
-            expected = ['2010-12-01 11:00', '2010-12-02 11:00', NaT]
-            self.assertTrue(idx.equals(DatetimeIndex(expected, tz='US/Eastern')))
+        idx = idx.tz_convert('US/Eastern')
+        expected = ['2010-12-01 11:00', '2010-12-02 11:00', NaT]
+        self.assertTrue(idx.equals(DatetimeIndex(expected, tz='US/Eastern')))
 
 
 if __name__ == '__main__':

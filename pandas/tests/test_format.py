@@ -14,7 +14,7 @@ from numpy import nan
 from numpy.random import randn
 import numpy as np
 
-from pandas import DataFrame, Series, Index, _np_version_under1p7, Timestamp, MultiIndex
+from pandas import DataFrame, Series, Index, Timestamp, MultiIndex
 
 import pandas.core.format as fmt
 import pandas.util.testing as tm
@@ -1348,8 +1348,8 @@ class TestDataFrameFormatting(tm.TestCase):
                             'B': tm.makeStringIndex(200)},
                            index=lrange(200))
 
-        biggie['A'][:20] = nan
-        biggie['B'][:20] = nan
+        biggie.loc[:20,'A'] = nan
+        biggie.loc[:20,'B'] = nan
         s = biggie.to_string()
 
         buf = StringIO()
@@ -1597,8 +1597,8 @@ c  10  11  12  13  14\
                             'B': tm.makeStringIndex(200)},
                            index=lrange(200))
 
-        biggie['A'][:20] = nan
-        biggie['B'][:20] = nan
+        biggie.loc[:20,'A'] = nan
+        biggie.loc[:20,'B'] = nan
         s = biggie.to_html()
 
         buf = StringIO()
@@ -1624,8 +1624,8 @@ c  10  11  12  13  14\
                             'B': tm.makeStringIndex(200)},
                            index=lrange(200))
 
-        biggie['A'][:20] = nan
-        biggie['B'][:20] = nan
+        biggie.loc[:20,'A'] = nan
+        biggie.loc[:20,'B'] = nan
         with tm.ensure_clean('test.html') as path:
             biggie.to_html(path)
             with open(path, 'r') as f:
@@ -2082,6 +2082,31 @@ c  10  11  12  13  14\
 \end{tabular}
 """
         self.assertEqual(withoutindex_result, withoutindex_expected)
+
+    def test_to_latex_multiindex(self):
+        df = DataFrame({('x', 'y'): ['a']})
+        result = df.to_latex()
+        expected = r"""\begin{tabular}{ll}
+\toprule
+{} &  x \\
+{} &  y \\
+\midrule
+0 &  a \\
+\bottomrule
+\end{tabular}
+"""
+        self.assertEqual(result, expected)
+
+        result = df.T.to_latex()
+        expected = r"""\begin{tabular}{ll}
+\toprule
+{} &  0 \\
+\midrule
+x y &  a \\
+\bottomrule
+\end{tabular}
+"""
+        self.assertEqual(result, expected)
 
     def test_to_latex_escape(self):
         a = 'a'
@@ -2727,10 +2752,6 @@ class TestFloatArrayFormatter(tm.TestCase):
 
 
 class TestRepr_timedelta64(tm.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        tm._skip_if_not_numpy17_friendly()
-
     def test_legacy(self):
         delta_1d = pd.to_timedelta(1, unit='D')
         delta_0d = pd.to_timedelta(0, unit='D')
@@ -2775,10 +2796,6 @@ class TestRepr_timedelta64(tm.TestCase):
 
 
 class TestTimedelta64Formatter(tm.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        tm._skip_if_not_numpy17_friendly()
-
     def test_mixed(self):
         x = pd.to_timedelta(list(range(5)) + [pd.NaT], unit='D')
         y = pd.to_timedelta(list(range(5)) + [pd.NaT], unit='s')
