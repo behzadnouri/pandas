@@ -1920,13 +1920,10 @@ def groupby_indices(ndarray values):
         result[ids[i]] = arr
         vecs[i] = <int64_t *> arr.data
 
+    labels[labels == -1] = len(counts) - 1  # nan sentinel = -1
+
     for i from 0 <= i < n:
         k = labels[i]
-
-        # was NaN
-        if k == -1:
-            continue
-
         loc = seen[k]
         vecs[k][loc] = i
         seen[k] = loc + 1
@@ -1951,19 +1948,18 @@ def group_labels(ndarray[object] values):
         dict ids = {}, reverse = {}
         int64_t idx
         object val
-        int64_t count = 0
+        int64_t count = 0, na_count = 0
 
     for i from 0 <= i < n:
         val = values[i]
 
         # is NaN
-        if val != val:
+        if val != val or val is None:
             labels[i] = -1
-            continue
-
+            na_count += 1
         # for large number of groups, not doing try: except: makes a big
         # difference
-        if val in ids:
+        elif val in ids:
             idx = ids[val]
             labels[i] = idx
             counts[idx] = counts[idx] + 1
@@ -1973,6 +1969,11 @@ def group_labels(ndarray[object] values):
             labels[i] = count
             counts[count] = 1
             count += 1
+
+    if 0 < na_count: # shove nan values at index `-1`
+        reverse[count] = np.nan
+        counts[count] = na_count
+        count += 1
 
     return reverse, labels, counts[:count].copy()
 

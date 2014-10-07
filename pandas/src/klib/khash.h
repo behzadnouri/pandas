@@ -215,10 +215,16 @@ static const double __ac_HASH_UPPER = 0.77;
 			mask = h->n_buckets - 1;									\
 			k = __hash_func(key); i = k & mask;							\
 			inc = __ac_inc(k, mask); last = i; /* inc==1 for linear probing */ \
-			while (!__ac_isempty(h->flags, i) && (__ac_isdel(h->flags, i) || !__hash_equal(h->keys[i], key))) { \
-				i = (i + inc) & mask; 									\
-				if (i == last) return h->n_buckets;						\
-			}															\
+            if( key != key ) /* nan  */                                 \
+                while (!__ac_isempty(h->flags, i) && (__ac_isdel(h->flags, i) || h->keys[i] == h->keys[i] )) { \
+                    i = (i + inc) & mask; 								\
+                    if (i == last) return h->n_buckets;					\
+                }														\
+            else                                                        \
+                while (!__ac_isempty(h->flags, i) && (__ac_isdel(h->flags, i) || !__hash_equal(h->keys[i], key))) { \
+                    i = (i + inc) & mask; 								\
+                    if (i == last) return h->n_buckets;					\
+                }														\
 			return __ac_iseither(h->flags, i)? h->n_buckets : i;		\
 		} else return 0;												\
 	}																	\

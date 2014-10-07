@@ -89,11 +89,19 @@ class TestFactorize(tm.TestCase):
         labels, uniques = algos.factorize(x)
 
         self.assert_numpy_array_equal(labels, np.array([ 0,  0, -1,  1,  2,  3],dtype=np.int64))
-        self.assert_numpy_array_equal(uniques, np.array(['A', 'B', 3.14, np.inf], dtype=object))
+        self.assert_numpy_array_equal(uniques, np.array(['A', 'B', 3.14, np.inf, np.nan], dtype=object))
+        self.assert_numpy_array_equal(x.values, uniques[labels].values)
+
+        assert uniques[-1] != uniques[-1], \
+                "last unique value should be `nan` (nan sentinal `-1`)"
 
         labels, uniques = algos.factorize(x, sort=True)
         self.assert_numpy_array_equal(labels, np.array([ 2,  2, -1,  3,  0,  1],dtype=np.int64))
-        self.assert_numpy_array_equal(uniques, np.array([3.14, np.inf, 'A', 'B'], dtype=object))
+        self.assert_numpy_array_equal(uniques, np.array([3.14, np.inf, 'A', 'B', np.nan], dtype=object))
+        self.assert_numpy_array_equal(x.values, uniques[labels].values)
+
+        assert uniques[-1] != uniques[-1], \
+                "last unique value should be `nan` (nan sentinal `-1`)"
 
     def test_datelike(self):
 

@@ -1064,10 +1064,10 @@ def _make_concat_multiindex(indexes, keys, levels=None, names=None):
         hlevel = _ensure_index(hlevel)
         mapped = level.get_indexer(hlevel)
 
-        mask = mapped == -1
-        if mask.any():
-            raise ValueError('Values not found in passed level: %s'
-                             % str(hlevel[mask]))
+        # mask = mapped == -1
+        # if mask.any():
+        #     raise ValueError('Values not found in passed level: %s'
+        #                      % str(hlevel[mask]))
 
         new_labels.append(np.repeat(mapped, n))
 

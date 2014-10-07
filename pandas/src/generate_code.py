@@ -2,7 +2,10 @@ from __future__ import print_function
 # we only need to be able to run this file on 2.7
 # don't introduce a pandas/pandas.compat import
 # or we get a bootstrapping problem
-from StringIO import StringIO
+try:
+    from StringIO import StringIO
+except ImportError: # python 3
+    from io import StringIO
 
 header = """
 cimport numpy as np
@@ -22,6 +25,7 @@ cimport cpython
 
 import numpy as np
 isnan = np.isnan
+ONAN = np.nan
 
 from datetime import datetime as pydatetime
 
@@ -607,7 +611,8 @@ def groupby_%(name)s(ndarray[%(c_type)s] index, ndarray labels):
         key = util.get_value_1d(labels, i)
 
         if _checknull(key):
-            continue
+            # continue
+            key = ONAN
 
         idx = index[i]
         if key in result:
@@ -814,7 +819,7 @@ def group_add_%(name)s(ndarray[%(dest_type2)s, ndim=2] out,
     Only aggregates on axis=0
     '''
     cdef:
-        Py_ssize_t i, j, N, K, lab
+        Py_ssize_t i, j, N, K, lab, ilast = len(counts) - 1
         %(dest_type2)s val, count
         ndarray[%(dest_type2)s, ndim=2] sumx, nobs
 
@@ -825,12 +830,15 @@ def group_add_%(name)s(ndarray[%(dest_type2)s, ndim=2] out,
     sumx = np.zeros_like(out)
 
     N, K = (<object> values).shape
+    # labels[labels == -1] = len(counts) - 1 # nan sentinel
 
     if K > 1:
         for i in range(N):
             lab = labels[i]
-            if lab < 0:
-                continue
+            if lab == -1:  # nan sentinel
+                lab = ilast
+            # if lab < 0:
+            #     continue
 
             counts[lab] += 1
             for j in range(K):
@@ -843,8 +851,10 @@ def group_add_%(name)s(ndarray[%(dest_type2)s, ndim=2] out,
     else:
         for i in range(N):
             lab = labels[i]
-            if lab < 0:
-                continue
+            if lab == -1:  # nan sentinel
+                lab = ilast
+            # if lab < 0:
+            #     continue
 
             counts[lab] += 1
             val = values[i, 0]

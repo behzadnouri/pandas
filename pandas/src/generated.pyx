@@ -16,6 +16,7 @@ cimport cpython
 
 import numpy as np
 isnan = np.isnan
+ONAN = np.nan
 
 from datetime import datetime as pydatetime
 
@@ -1977,7 +1978,8 @@ def groupby_float64(ndarray[float64_t] index, ndarray labels):
         key = util.get_value_1d(labels, i)
 
         if _checknull(key):
-            continue
+            # continue
+            key = ONAN
 
         idx = index[i]
         if key in result:
@@ -2005,7 +2007,8 @@ def groupby_float32(ndarray[float32_t] index, ndarray labels):
         key = util.get_value_1d(labels, i)
 
         if _checknull(key):
-            continue
+            # continue
+            key = ONAN
 
         idx = index[i]
         if key in result:
@@ -2033,7 +2036,8 @@ def groupby_object(ndarray[object] index, ndarray labels):
         key = util.get_value_1d(labels, i)
 
         if _checknull(key):
-            continue
+            # continue
+            key = ONAN
 
         idx = index[i]
         if key in result:
@@ -2061,7 +2065,8 @@ def groupby_int32(ndarray[int32_t] index, ndarray labels):
         key = util.get_value_1d(labels, i)
 
         if _checknull(key):
-            continue
+            # continue
+            key = ONAN
 
         idx = index[i]
         if key in result:
@@ -2089,7 +2094,8 @@ def groupby_int64(ndarray[int64_t] index, ndarray labels):
         key = util.get_value_1d(labels, i)
 
         if _checknull(key):
-            continue
+            # continue
+            key = ONAN
 
         idx = index[i]
         if key in result:
@@ -2117,7 +2123,8 @@ def groupby_bool(ndarray[uint8_t] index, ndarray labels):
         key = util.get_value_1d(labels, i)
 
         if _checknull(key):
-            continue
+            # continue
+            key = ONAN
 
         idx = index[i]
         if key in result:
@@ -5091,7 +5098,7 @@ def group_add_float64(ndarray[float64_t, ndim=2] out,
     Only aggregates on axis=0
     '''
     cdef:
-        Py_ssize_t i, j, N, K, lab
+        Py_ssize_t i, j, N, K, lab, ilast = len(counts) - 1
         float64_t val, count
         ndarray[float64_t, ndim=2] sumx, nobs
 
@@ -5102,12 +5109,15 @@ def group_add_float64(ndarray[float64_t, ndim=2] out,
     sumx = np.zeros_like(out)
 
     N, K = (<object> values).shape
+    # labels[labels == -1] = len(counts) - 1 # nan sentinel
 
     if K > 1:
         for i in range(N):
             lab = labels[i]
-            if lab < 0:
-                continue
+            if lab == -1:  # nan sentinel
+                lab = ilast
+            # if lab < 0:
+            #     continue
 
             counts[lab] += 1
             for j in range(K):
@@ -5120,8 +5130,10 @@ def group_add_float64(ndarray[float64_t, ndim=2] out,
     else:
         for i in range(N):
             lab = labels[i]
-            if lab < 0:
-                continue
+            if lab == -1:  # nan sentinel
+                lab = ilast
+            # if lab < 0:
+            #     continue
 
             counts[lab] += 1
             val = values[i, 0]
@@ -5147,7 +5159,7 @@ def group_add_float32(ndarray[float32_t, ndim=2] out,
     Only aggregates on axis=0
     '''
     cdef:
-        Py_ssize_t i, j, N, K, lab
+        Py_ssize_t i, j, N, K, lab, ilast = len(counts) - 1
         float32_t val, count
         ndarray[float32_t, ndim=2] sumx, nobs
 
@@ -5158,12 +5170,15 @@ def group_add_float32(ndarray[float32_t, ndim=2] out,
     sumx = np.zeros_like(out)
 
     N, K = (<object> values).shape
+    # labels[labels == -1] = len(counts) - 1 # nan sentinel
 
     if K > 1:
         for i in range(N):
             lab = labels[i]
-            if lab < 0:
-                continue
+            if lab == -1:  # nan sentinel
+                lab = ilast
+            # if lab < 0:
+            #     continue
 
             counts[lab] += 1
             for j in range(K):
@@ -5176,8 +5191,10 @@ def group_add_float32(ndarray[float32_t, ndim=2] out,
     else:
         for i in range(N):
             lab = labels[i]
-            if lab < 0:
-                continue
+            if lab == -1:  # nan sentinel
+                lab = ilast
+            # if lab < 0:
+            #     continue
 
             counts[lab] += 1
             val = values[i, 0]

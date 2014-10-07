@@ -599,19 +599,28 @@ class TestGroupBy(tm.TestCase):
         self.assertRaises(ValueError, lambda : g.get_group(('foo','bar','baz')))
 
     def test_agg_apply_corner(self):
-        # nothing to group, all NA
+        # all nan, only one group with key `nan`
         grouped = self.ts.groupby(self.ts * np.nan)
+        exp_ts = Series([self.ts.sum()], index=[np.nan])
 
-        assert_series_equal(grouped.sum(), Series([]))
-        assert_series_equal(grouped.agg(np.sum), Series([]))
-        assert_series_equal(grouped.apply(np.sum), Series([]))
+        assert_series_equal(grouped.sum(), exp_ts)
+        assert_series_equal(grouped.agg(np.sum), exp_ts)
+        assert_series_equal(grouped.apply(np.sum), exp_ts)
 
         # DataFrame
-        grouped = self.tsframe.groupby(self.tsframe['A'] * np.nan)
-        exp_df = DataFrame(columns=self.tsframe.columns, dtype=float)
-        assert_frame_equal(grouped.sum(), exp_df, check_names=False)
-        assert_frame_equal(grouped.agg(np.sum), exp_df, check_names=False)
-        assert_frame_equal(grouped.apply(np.sum), DataFrame({}, dtype=float))
+        grouper = self.tsframe['A'] * np.nan
+        # XXX due to a bug in GroupBy::_set_selection_from_grouper, the passed
+        # in grouper should not have the same name as any of the columns;
+        # otherwise the column will be droped if the code hits that function
+        grouper.name = 'joe'
+        grouped = self.tsframe.groupby(grouper)
+
+        exp_df = DataFrame(self.tsframe.sum()).T
+        exp_df.index = Index([np.nan], name='joe')
+
+        assert_frame_equal(grouped.sum(), exp_df, check_names=True)
+        assert_frame_equal(grouped.agg(np.sum), exp_df, check_names=True)
+        assert_frame_equal(grouped.apply(np.sum), exp_df, check_names=True)
 
     def test_agg_grouping_is_list_tuple(self):
         from pandas.core.groupby import Grouping

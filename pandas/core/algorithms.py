@@ -150,12 +150,26 @@ def factorize(values, sort=False, order=None, na_sentinel=-1):
                 ])
             sorter = com._ensure_platform_int(t.lookup(com._ensure_object(ordered)))
 
+        # FIXME delete this
+        # to stay consistent, keep nan values at index -1
+        # if uniques[-1] != uniques[-1]:
+        #     mask = sorter[-1] < sorter
+        #     sorter[mask] -= 1
+        #     sorter[-1] = -1
+
         reverse_indexer = np.empty(len(sorter), dtype=np.int_)
         reverse_indexer.put(sorter, np.arange(len(sorter)))
 
-        mask = labels < 0
+        # to stay consistent, keep nan values at index -1
+        if uniques[-1] != uniques[-1]:
+            mask = reverse_indexer[-1] < reverse_indexer
+            reverse_indexer[mask] -= 1
+            reverse_indexer[-1] = -1
+            sorter.put(reverse_indexer, np.arange(len(sorter)))
+
+        # mask = labels < 0
         labels = reverse_indexer.take(labels)
-        np.putmask(labels, mask, -1)
+        # np.putmask(labels, mask, -1)
 
         uniques = uniques.take(sorter)
 

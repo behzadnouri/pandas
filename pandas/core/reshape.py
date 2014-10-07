@@ -81,7 +81,9 @@ class _Unstacker(object):
         labels = index.labels
 
         def _make_index(lev, lab):
-            values = _make_index_array_level(lev.values, lab)
+            # values = _make_index_array_level(lev.values, lab) # XXX
+            # XXX why that was needed ?!
+            values = lev.values
             i = lev._simple_new(values, lev.name,
                                 freq=getattr(lev, 'freq', None),
                                 tz=getattr(lev, 'tz', None))
@@ -127,6 +129,7 @@ class _Unstacker(object):
 
         comp_index, obs_ids = get_compressed_ids(remaining_labels, level_sizes)
         ngroups = len(obs_ids)
+        comp_index[comp_index == -1] = ngroups - 1 # nan senitnel
 
         comp_index = _ensure_platform_int(comp_index)
         stride = self.index.levshape[self.level]
@@ -476,7 +479,7 @@ def get_compressed_ids(labels, sizes):
     if com._long_prod(sizes) < 2 ** 63:
         group_index = get_group_index(labels, sizes)
         comp_index, obs_ids = _compress_group_index(group_index)
-    else:
+    else:  # XXX check this path
         n = len(labels[0])
         mask = np.zeros(n, dtype=bool)
         for v in labels:

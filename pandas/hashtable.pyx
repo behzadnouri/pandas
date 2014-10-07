@@ -488,6 +488,7 @@ cdef class Int64HashTable: #(HashTable):
             int64_t val
             khiter_t k
             Int64Vector uniques = Int64Vector()
+            bint seen_na = 0
 
         labels = np.empty(n, dtype=np.int64)
 
@@ -495,8 +496,9 @@ cdef class Int64HashTable: #(HashTable):
             val = values[i]
 
             # specific for groupby
-            if val < 0:
+            if val == -1: # < 0: nan sentinel
                 labels[i] = -1
+                seen_na = 1
                 continue
 
             k = kh_get_int64(self.table, val)
@@ -509,6 +511,9 @@ cdef class Int64HashTable: #(HashTable):
                 uniques.append(val)
                 labels[i] = count
                 count += 1
+
+        if seen_na:  # shove nan sentinel at index `-1`
+            uniques.append(-1)
 
         arr_uniques = uniques.to_array()
 
@@ -589,6 +594,7 @@ cdef class Float64HashTable(HashTable):
             int ret = 0
             float64_t val
             khiter_t k
+            bint seen_na = 0
 
         labels = np.empty(n, dtype=np.int64)
 
@@ -597,6 +603,7 @@ cdef class Float64HashTable(HashTable):
 
             if val != val:
                 labels[i] = na_sentinel
+                seen_na = 1
                 continue
 
             k = kh_get_float64(self.table, val)
@@ -610,6 +617,9 @@ cdef class Float64HashTable(HashTable):
                 labels[i] = count
                 count += 1
 
+        if seen_na and na_sentinel == -1:  # shove nan at index `-1`
+            uniques.append(ONAN)
+
         return labels
 
     def map_locations(self, ndarray[float64_t] values):
@@ -617,9 +627,12 @@ cdef class Float64HashTable(HashTable):
             Py_ssize_t i, n = len(values)
             int ret = 0
             khiter_t k
+            float64_t val
 
         for i in range(n):
-            k = kh_put_float64(self.table, values[i], &ret)
+            val = values[i]
+
+            k = kh_put_float64(self.table, val, &ret)
             self.table.vals[k] = i
 
     def lookup(self, ndarray[float64_t] values):
@@ -632,6 +645,7 @@ cdef class Float64HashTable(HashTable):
 
         for i in range(n):
             val = values[i]
+
             k = kh_get_float64(self.table, val)
             if k != self.table.n_buckets:
                 locs[i] = self.table.vals[k]
@@ -818,6 +832,7 @@ cdef class PyObjectHashTable(HashTable):
             int ret = 0
             object val
             khiter_t k
+            bint seen_na = 0
 
         labels = np.empty(n, dtype=np.int64)
 
@@ -827,6 +842,7 @@ cdef class PyObjectHashTable(HashTable):
 
             if val != val or val is None:
                 labels[i] = na_sentinel
+                seen_na = 1
                 continue
 
             k = kh_get_pymap(self.table, <PyObject*>val)
@@ -839,6 +855,9 @@ cdef class PyObjectHashTable(HashTable):
                 uniques.append(val)
                 labels[i] = count
                 count += 1
+
+        if seen_na and na_sentinel == -1:  # shove nan at index `-1`
+            uniques.append(ONAN)
 
         return labels
 

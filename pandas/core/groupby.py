@@ -471,6 +471,10 @@ class GroupBy(PandasObject):
         grp = self.grouper
         if self.as_index and getattr(grp,'groupings',None) is not None and self.obj.ndim > 1:
             ax = self.obj._info_axis
+            # XXX this is buggy: if i pass a series as the grouper which happens
+            # to have the same name as one of the columns, it will be picked up
+            # here and the corresponding column will be dropped from the
+            # self._group_selection; see test_groupby.py::test_agg_apply_corner
             groupers = [ g.name for g in grp.groupings if g.level is None and g.name is not None and g.name in ax ]
             if len(groupers):
                 self._group_selection = (ax-Index(groupers)).tolist()
@@ -1333,7 +1337,7 @@ class BaseGrouper(object):
 
     def _get_compressed_labels(self):
         all_labels = [ping.labels for ping in self.groupings]
-        if self._overflow_possible:
+        if self._overflow_possible:  # XXX Check this path
             tups = lib.fast_zip(all_labels)
             labs, uniques = algos.factorize(tups)
 
@@ -3373,13 +3377,12 @@ def get_group_index(label_list, shape):
 
     n = len(label_list[0])
     group_index = np.zeros(n, dtype=np.int64)
-    mask = np.zeros(n, dtype=bool)
     for i in range(len(shape)):
         stride = np.prod([x for x in shape[i + 1:]], dtype=np.int64)
         group_index += com._ensure_int64(label_list[i]) * stride
-        mask |= label_list[i] < 0
+        # nan sentinal = -1 correspondes to last index; i.e. shape[i] - 1
+        group_index[label_list[i] == -1] += shape[i] * stride
 
-    np.putmask(group_index, mask, -1)
     return group_index
 
 _INT64_MAX = np.iinfo(np.int64).max
