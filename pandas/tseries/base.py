@@ -53,7 +53,7 @@ class DatetimeIndexOpsMixin(object):
         """
         apply box func to passed values
         """
-        return lib.map_infer(values, self._box_func)
+        return lib.map_infer(values, self._box_func, convert=False)
 
     def groupby(self, f):
         objs = self.asobject.values
@@ -469,5 +469,3 @@ class DatetimeIndexOpsMixin(object):
         """
         return self._simple_new(self.values.repeat(repeats),
                                 name=self.name)
-
-

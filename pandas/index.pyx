@@ -1,3 +1,4 @@
+# cython: profile=False
 from numpy cimport ndarray
 
 from numpy cimport (float64_t, int32_t, int64_t, uint8_t,

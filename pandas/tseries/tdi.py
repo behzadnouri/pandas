@@ -247,7 +247,8 @@ class TimedeltaIndex(DatetimeIndexOpsMixin, Int64Index):
 
     @property
     def _box_func(self):
-        return lambda x: Timedelta(x,unit='ns')
+        from functools import partial
+        return partial(Timedelta, unit='ns', fast=True)
 
     @classmethod
     def _simple_new(cls, values, name=None, freq=None, **kwargs):
@@ -978,5 +979,3 @@ def timedelta_range(start=None, end=None, periods=None, freq='D',
     return TimedeltaIndex(start=start, end=end, periods=periods,
                           freq=freq, name=name,
                           closed=closed)
-
-

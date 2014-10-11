@@ -1623,8 +1623,18 @@ class Timedelta(_Timedelta):
 
     """
 
-    def __new__(cls, object value=None, unit=None, **kwargs):
+    def __new__(cls, object value=None, unit=None, fast=False, **kwargs):
         cdef _Timedelta td_base
+
+        if fast:  # unit hould be 'ns'
+            value = value.astype('timedelta64[ns]').view('i8')
+            if value == NPY_NAT:
+                return NaT
+
+            td_base = _Timedelta.__new__(cls, microseconds=int(value)/1000)
+            td_base.value = value
+            td_base.is_populated = 0
+            return td_base
 
         if value is None:
             if not len(kwargs):

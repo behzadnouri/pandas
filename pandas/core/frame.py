@@ -3722,7 +3722,8 @@ class DataFrame(NDFrame):
         def infer(x):
             if com.needs_i8_conversion(x):
                 f = com.i8_boxer(x)
-                x = lib.map_infer(_values_from_object(x), f)
+                x = lib.map_infer(_values_from_object(x), f, convert=False)
+                return lib.map_infer(x, func)
             return lib.map_infer(_values_from_object(x), func)
         return self.apply(infer)
 

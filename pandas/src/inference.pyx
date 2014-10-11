@@ -992,6 +992,8 @@ def map_infer_mask(ndarray arr, object f, ndarray[uint8_t] mask,
 
     return result
 
+@cython.wraparound(False)
+@cython.boundscheck(False)
 def map_infer(ndarray arr, object f, bint convert=1):
     '''
     Substitute for np.vectorize with pandas-friendly dtype inference
@@ -1013,7 +1015,7 @@ def map_infer(ndarray arr, object f, bint convert=1):
     n = len(arr)
     result = np.empty(n, dtype=object)
     for i in range(n):
-        val = f(util.get_value_at(arr, i))
+        val = f(arr[i])
 
         # unbox 0-dim arrays, GH #690
         if is_array(val) and PyArray_NDIM(val) == 0:

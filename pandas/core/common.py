@@ -2427,7 +2427,8 @@ def i8_boxer(arr_or_dtype):
     if is_datetime64_dtype(arr_or_dtype):
         return lib.Timestamp
     elif is_timedelta64_dtype(arr_or_dtype):
-        return lambda x: lib.Timedelta(x,unit='ns')
+        from functools import partial
+        return partial(lib.Timedelta, unit='ns', fast=True)
     raise ValueError("cannot find a scalar boxer for {0}".format(arr_or_dtype))
 
 def is_numeric_dtype(arr_or_dtype):

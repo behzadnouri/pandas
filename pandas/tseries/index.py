@@ -472,7 +472,8 @@ class DatetimeIndex(DatetimeIndexOpsMixin, Int64Index):
 
     @property
     def _box_func(self):
-        return lambda x: Timestamp(x, offset=self.offset, tz=self.tz)
+        from functools import partial
+        return partial(Timestamp, offset=self.offset, tz=self.tz)
 
     def _local_timestamps(self):
         utc = _utc()
