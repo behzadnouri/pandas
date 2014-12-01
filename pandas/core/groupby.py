@@ -3251,12 +3251,11 @@ class DataFrameGroupBy(NDFrameGroupBy):
         This can re-expand the output space
         """
         groupings = self.grouper.groupings
-        if groupings is None:
-            return result
-        elif len(groupings) == 1:
-            return result
-        elif not any([ping._was_factor for ping in groupings]):
-            return result
+        if not self.as_index \
+                or groupings is None \
+                or len(groupings) == 1 \
+                or not any([ping._was_factor for ping in groupings]):
+                    return result
 
         levels_list = [ ping._group_index for ping in groupings ]
         index = MultiIndex.from_product(levels_list, names=self.grouper.names)

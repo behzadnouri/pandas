@@ -1499,6 +1499,16 @@ class TestGroupBy(tm.TestCase):
         result3 = grouped['C'].agg({'Q': np.sum})
         assert_frame_equal(result3, expected3)
 
+        # GH8869
+        df = DataFrame({'foo': [10, 8, 4, 8, 4, 1, 1],
+                        'bar': [10, 20, 30, 40, 50, 60, 70],
+                        'baz': ['d', 'c', 'e', 'a', 'a', 'd', 'c']})
+        df['range'] = pd.cut(df['foo'], np.linspace(0, 10, 3))
+
+        left = df.groupby(['range', 'baz'], as_index=False).agg('mean')
+        right = df.groupby(['range', 'baz'], as_index=True).agg('mean')
+        assert_frame_equal(left, right.reset_index())
+
         # GH7115 & GH8112 & GH8582
         df = DataFrame(np.random.randint(0, 100, (50, 3)),
                        columns=['jim', 'joe', 'jolie'])
