@@ -281,10 +281,6 @@ static const double __ac_HASH_UPPER = 0.77;
 	SCOPE khint_t kh_put_##name(kh_##name##_t *h, khkey_t key, int *ret) \
 	{																	\
 		khint_t x;														\
-		if (h->n_occupied >= h->upper_bound) { /* update the hash table */ \
-			if (h->n_buckets > (h->size<<1)) kh_resize_##name(h, h->n_buckets - 1); /* clear "deleted" elements */ \
-			else kh_resize_##name(h, h->n_buckets + 1); /* expand the hash table */ \
-		} /* TODO: to implement automatically shrinking; resize() already support shrinking */ \
 		{																\
 			khint_t inc, k, i, site, last, mask = h->n_buckets - 1;		\
 			x = site = h->n_buckets; k = __hash_func(key); i = k & mask; \
@@ -303,6 +299,10 @@ static const double __ac_HASH_UPPER = 0.77;
 			}															\
 		}																\
 		if (__ac_isempty(h->flags, x)) { /* not present at all */		\
+			if (h->n_occupied >= h->upper_bound) { /* update the hash table */ \
+				if (h->n_buckets > (h->size<<1)) kh_resize_##name(h, h->n_buckets - 1); /* clear "deleted" elements */ \
+				else kh_resize_##name(h, h->n_buckets + 1); /* expand the hash table */ \
+			} /* TODO: to implement automatically shrinking; resize() already support shrinking */ \
 			h->keys[x] = key;											\
 			__ac_set_isboth_false(h->flags, x);							\
 			++h->size; ++h->n_occupied;									\

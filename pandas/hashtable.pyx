@@ -214,20 +214,16 @@ cdef class StringHashTable(HashTable):
             int ret = 0
             object val
             char *buf
-            khiter_t k
             ObjectVector uniques = ObjectVector()
 
         for i in range(n):
             val = values[i]
             buf = util.get_c_string(val)
-            k = kh_get_str(self.table, buf)
-            if k == self.table.n_buckets:
-                k = kh_put_str(self.table, buf, &ret)
-                # print 'putting %s, %s' % (val, count)
+            kh_put_str(self.table, buf, &ret)
+            if ret != 0:
                 count += 1
                 uniques.append(val)
 
-        # return None
         return uniques.to_array()
 
     def factorize(self, ndarray[object] values):
@@ -235,7 +231,7 @@ cdef class StringHashTable(HashTable):
             Py_ssize_t i, n = len(values)
             ndarray[int64_t] labels = np.empty(n, dtype=np.int64)
             dict reverse = {}
-            Py_ssize_t idx, count = 0
+            Py_ssize_t count = 0
             int ret = 0
             object val
             char *buf
@@ -244,20 +240,16 @@ cdef class StringHashTable(HashTable):
         for i in range(n):
             val = values[i]
             buf = util.get_c_string(val)
-            k = kh_get_str(self.table, buf)
-            if k != self.table.n_buckets:
-                idx = self.table.vals[k]
-                labels[i] = idx
-            else:
-                k = kh_put_str(self.table, buf, &ret)
-                # print 'putting %s, %s' % (val, count)
 
+            k = kh_put_str(self.table, buf, &ret)
+            if ret != 0:
                 self.table.vals[k] = count
                 reverse[count] = val
                 labels[i] = count
                 count += 1
+            else:
+                labels[i] = self.table.vals[k]
 
-        # return None
         return reverse, labels
 
 cdef class Int32HashTable(HashTable):
@@ -338,23 +330,21 @@ cdef class Int32HashTable(HashTable):
             Py_ssize_t i, n = len(values)
             ndarray[int64_t] labels = np.empty(n, dtype=np.int64)
             dict reverse = {}
-            Py_ssize_t idx, count = 0
+            Py_ssize_t count = 0
             int ret = 0
             int32_t val
             khiter_t k
 
         for i in range(n):
-            val = values[i]
-            k = kh_get_int32(self.table, val)
-            if k != self.table.n_buckets:
-                idx = self.table.vals[k]
-                labels[i] = idx
-            else:
-                k = kh_put_int32(self.table, val, &ret)
+            k = kh_put_int32(self.table, values[i], &ret)
+
+            if ret != 0:
                 self.table.vals[k] = count
                 reverse[count] = val
                 labels[i] = count
                 count += 1
+            else:
+                labels[i] = self.table.vals[k]
 
         # return None
         return reverse, labels
@@ -457,25 +447,23 @@ cdef class Int64HashTable: #(HashTable):
         cdef:
             Py_ssize_t i, n = len(values)
             ndarray[int64_t] labels
-            Py_ssize_t idx, count = count_prior
+            Py_ssize_t count = count_prior
             int ret = 0
             int64_t val
-            khiter_t k
 
         labels = np.empty(n, dtype=np.int64)
 
         for i in range(n):
             val = values[i]
-            k = kh_get_int64(self.table, val)
-            if k != self.table.n_buckets:
-                idx = self.table.vals[k]
-                labels[i] = idx
-            else:
-                k = kh_put_int64(self.table, val, &ret)
+            k = kh_put_int64(self.table, val, &ret)
+
+            if ret != 0:
                 self.table.vals[k] = count
                 uniques.append(val)
                 labels[i] = count
                 count += 1
+            else:
+                labels[i] = self.table.vals[k]
 
         return labels
 
@@ -483,7 +471,7 @@ cdef class Int64HashTable: #(HashTable):
         cdef:
             Py_ssize_t i, n = len(values)
             ndarray[int64_t] labels
-            Py_ssize_t idx, count = 0
+            Py_ssize_t count = 0
             int ret = 0
             int64_t val
             khiter_t k
@@ -499,16 +487,14 @@ cdef class Int64HashTable: #(HashTable):
                 labels[i] = -1
                 continue
 
-            k = kh_get_int64(self.table, val)
-            if k != self.table.n_buckets:
-                idx = self.table.vals[k]
-                labels[i] = idx
-            else:
-                k = kh_put_int64(self.table, val, &ret)
+            k = kh_put_int64(self.table, val, &ret)
+            if ret != 0:
                 self.table.vals[k] = count
                 uniques.append(val)
                 labels[i] = count
                 count += 1
+            else:
+                labels[i] = self.table.vals[k]
 
         arr_uniques = uniques.to_array()
 
@@ -521,19 +507,17 @@ cdef class Int64HashTable: #(HashTable):
             int ret = 0
             ndarray result
             int64_t val
-            khiter_t k
             Int64Vector uniques = Int64Vector()
 
         for i in range(n):
             val = values[i]
-            k = kh_get_int64(self.table, val)
-            if k == self.table.n_buckets:
-                k = kh_put_int64(self.table, val, &ret)
+            kh_put_int64(self.table, val, &ret)
+
+            if ret != 0:
                 uniques.append(val)
                 count += 1
 
         result = uniques.to_array()
-
         return result
 
 
@@ -585,7 +569,7 @@ cdef class Float64HashTable(HashTable):
         cdef:
             Py_ssize_t i, n = len(values)
             ndarray[int64_t] labels
-            Py_ssize_t idx, count = count_prior
+            Py_ssize_t count = count_prior
             int ret = 0
             float64_t val
             khiter_t k
@@ -599,16 +583,14 @@ cdef class Float64HashTable(HashTable):
                 labels[i] = na_sentinel
                 continue
 
-            k = kh_get_float64(self.table, val)
-            if k != self.table.n_buckets:
-                idx = self.table.vals[k]
-                labels[i] = idx
-            else:
-                k = kh_put_float64(self.table, val, &ret)
+            k = kh_put_float64(self.table, val, &ret)
+            if ret != 0:
                 self.table.vals[k] = count
                 uniques.append(val)
                 labels[i] = count
                 count += 1
+            else:
+                labels[i] = self.table.vals[k]
 
         return labels
 
@@ -654,11 +636,11 @@ cdef class Float64HashTable(HashTable):
             val = values[i]
 
             if val == val:
-                k = kh_get_float64(self.table, val)
-                if k == self.table.n_buckets:
-                    k = kh_put_float64(self.table, val, &ret)
+                k = kh_put_float64(self.table, val, &ret)
+                if ret != 0:
                     uniques.append(val)
                     count += 1
+
             elif not seen_na:
                 seen_na = 1
                 uniques.append(ONAN)
@@ -789,7 +771,6 @@ cdef class PyObjectHashTable(HashTable):
             int ret = 0
             object val
             ndarray result
-            khiter_t k
             ObjectVector uniques = ObjectVector()
             bint seen_na = 0
 
@@ -797,10 +778,10 @@ cdef class PyObjectHashTable(HashTable):
             val = values[i]
             hash(val)
             if not _checknan(val):
-                k = kh_get_pymap(self.table, <PyObject*>val)
-                if k == self.table.n_buckets:
-                    k = kh_put_pymap(self.table, <PyObject*>val, &ret)
+                kh_put_pymap(self.table, <PyObject*>val, &ret)
+                if ret != 0:
                     uniques.append(val)
+
             elif not seen_na:
                 seen_na = 1
                 uniques.append(ONAN)
@@ -814,7 +795,7 @@ cdef class PyObjectHashTable(HashTable):
         cdef:
             Py_ssize_t i, n = len(values)
             ndarray[int64_t] labels
-            Py_ssize_t idx, count = count_prior
+            Py_ssize_t count = count_prior
             int ret = 0
             object val
             khiter_t k
@@ -829,16 +810,14 @@ cdef class PyObjectHashTable(HashTable):
                 labels[i] = na_sentinel
                 continue
 
-            k = kh_get_pymap(self.table, <PyObject*>val)
-            if k != self.table.n_buckets:
-                idx = self.table.vals[k]
-                labels[i] = idx
-            else:
-                k = kh_put_pymap(self.table, <PyObject*>val, &ret)
+            k = kh_put_pymap(self.table, <PyObject*>val, &ret)
+            if ret != 0:
                 self.table.vals[k] = count
                 uniques.append(val)
                 labels[i] = count
                 count += 1
+            else:
+                labels[i] = self.table.vals[k]
 
         return labels
 
@@ -925,12 +904,11 @@ cdef build_count_table_int64(ndarray[int64_t] values, kh_int64_t *table):
 
     for i in range(n):
         val = values[i]
-        k = kh_get_int64(table, val)
-        if k != table.n_buckets:
-            table.vals[k] += 1
-        else:
-            k = kh_put_int64(table, val, &ret)
+        k = kh_put_int64(table, val, &ret)
+        if ret != 0:
             table.vals[k] = 1
+        else:
+            table.vals[k] += 1
 
 
 cpdef value_count_int64(ndarray[int64_t] values):
@@ -971,12 +949,11 @@ cdef build_count_table_object(ndarray[object] values,
             continue
 
         val = values[i]
-        k = kh_get_pymap(table, <PyObject*> val)
-        if k != table.n_buckets:
-            table.vals[k] += 1
-        else:
-            k = kh_put_pymap(table, <PyObject*> val, &ret)
+        k = kh_put_pymap(table, <PyObject*> val, &ret)
+        if ret != 0:
             table.vals[k] = 1
+        else:
+            table.vals[k] += 1
 
 
 cpdef value_count_object(ndarray[object] values,
