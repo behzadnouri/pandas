@@ -1087,7 +1087,7 @@ def ewmcov(ndarray[double_t] input_x, ndarray[double_t] input_y,
     sum_wt = 1.
     sum_wt2 = 1.
     old_wt = 1.
-    
+
     for i from 1 <= i < N:
         cur_x = input_x[i]
         cur_y = input_y[i]
@@ -1117,7 +1117,7 @@ def ewmcov(ndarray[double_t] input_x, ndarray[double_t] input_y,
         elif is_observation:
             mean_x = cur_x
             mean_y = cur_y
-        
+
         if nobs >= minp:
             if not bias:
                 numerator = sum_wt * sum_wt
@@ -1614,85 +1614,130 @@ cdef struct pairs:
 
 from libc cimport stdlib
 
+
 @cython.boundscheck(False)
 @cython.wraparound(False)
-def roll_max2(ndarray[float64_t] a, int window, int minp):
-    "Moving max of 1d array of dtype=float64 along axis=0 ignoring NaNs."
-    cdef np.float64_t ai, aold
-    cdef Py_ssize_t count
-    cdef pairs* ring
-    cdef pairs* minpair
-    cdef pairs* end
-    cdef pairs* last
-    cdef Py_ssize_t i0
-    cdef np.npy_intp *dim
-    dim = PyArray_DIMS(a)
-    cdef Py_ssize_t n0 = dim[0]
-    cdef np.npy_intp *dims = [n0]
-    cdef np.ndarray[np.float64_t, ndim=1] y = PyArray_EMPTY(1, dims,
-		NPY_float64, 0)
+def roll_max2(ndarray[float64_t, ndim=1] a,
+              Py_ssize_t window,
+              Py_ssize_t minp):
+    cdef:
+        float64_t val
+        Py_ssize_t i, l = 1, r = 0, count = 1, n = len(a), w = window + 1
+        # ndarray[float64_t, ndim=1] ring = np.empty(w, dtype=np.float64)
+        ndarray[float64_t, ndim=1] out = np.empty(n, dtype=np.float64)
+        float64_t * ring = <float64_t *> stdlib.malloc(w * sizeof(float64_t))
 
     if window < 1:
-        raise ValueError('Invalid window size %d'
-                         % (window))
+        raise ValueError('Invalid window size {0:}'.format(window))
 
     if minp > window:
         raise ValueError('Invalid min_periods size %d greater than window %d'
                         % (minp, window))
 
-    minp = _check_minp(window, minp, n0)
+    minp = _check_minp(window, minp, n)
 
-    ring = <pairs*>stdlib.malloc(window * sizeof(pairs))
-    end = ring + window
-    last = ring
+    for i in range(n):
 
-    minpair = ring
-    ai = a[0]
-    if ai == ai:
-        minpair.value = ai
-    else:
-        minpair.value = MINfloat64
-    minpair.death = window
-
-    count = 0
-    for i0 in range(n0):
-        ai = a[i0]
-        if ai == ai:
-            count += 1
-        else:
-            ai = MINfloat64
-        if i0 >= window:
-            aold = a[i0 - window]
-            if aold == aold:
+        if window < i + 1:
+            val = a[i - window]
+            if val == val:
                 count -= 1
-        if minpair.death == i0:
-            minpair += 1
-            if minpair >= end:
-                minpair = ring
-        if ai >= minpair.value:
-            minpair.value = ai
-            minpair.death = i0 + window
-            last = minpair
-        else:
-            while last.value <= ai:
-                if last == ring:
-                    last = end
-                last -= 1
-            last += 1
-            if last == end:
-                last = ring
-            last.value = ai
-            last.death = i0 + window
-        if count >= minp:
-            y[i0] = minpair.value
-        else:
-            y[i0] = NaN
+                if ring[r] == val:
+                    r = (r or w) - 1
 
-    for i0 in range(minp - 1):
-        y[i0] = NaN
+        val = a[i]
+        if val == val:
+            count += 1
+            while (l or w) != r + 1 and ring[l] < val:
+                l = l + 1 != w and l + 1
+
+            l = (l or w) - 1
+            ring[l] = val
+
+        out[i] = ring[r] if minp < count and (l or w) != r + 1 else NaN
 
     stdlib.free(ring)
-    return y
+    return out
+
+# @cython.boundscheck(False)
+# @cython.wraparound(False)
+# def roll_max3(ndarray[float64_t] a, int window, int minp):
+#     "Moving max of 1d array of dtype=float64 along axis=0 ignoring NaNs."
+#     cdef np.float64_t ai, aold
+#     cdef Py_ssize_t count
+#     cdef pairs* ring
+#     cdef pairs* minpair
+#     cdef pairs* end
+#     cdef pairs* last
+#     cdef Py_ssize_t i0
+#     cdef np.npy_intp *dim
+#     dim = PyArray_DIMS(a)
+#     cdef Py_ssize_t n0 = dim[0]
+#     cdef np.npy_intp *dims = [n0]
+#     cdef np.ndarray[np.float64_t, ndim=1] y = PyArray_EMPTY(1, dims,
+# 		NPY_float64, 0)
+#
+#     if window < 1:
+#         raise ValueError('Invalid window size %d'
+#                          % (window))
+#
+#     if minp > window:
+#         raise ValueError('Invalid min_periods size %d greater than window %d'
+#                         % (minp, window))
+#
+#     minp = _check_minp(window, minp, n0)
+#
+#     ring = <pairs*>stdlib.malloc(window * sizeof(pairs))
+#     end = ring + window
+#     last = ring
+#
+#     minpair = ring
+#     ai = a[0]
+#     if ai == ai:
+#         minpair.value = ai
+#     else:
+#         minpair.value = MINfloat64
+#     minpair.death = window
+#
+#     count = 0
+#     for i0 in range(n0):
+#         ai = a[i0]
+#         if ai == ai:
+#             count += 1
+#         else:
+#             ai = MINfloat64
+#         if i0 >= window:
+#             aold = a[i0 - window]
+#             if aold == aold:
+#                 count -= 1
+#         if minpair.death == i0:
+#             minpair += 1
+#             if minpair >= end:
+#                 minpair = ring
+#         if ai >= minpair.value:
+#             minpair.value = ai
+#             minpair.death = i0 + window
+#             last = minpair
+#         else:
+#             while last.value <= ai:
+#                 if last == ring:
+#                     last = end
+#                 last -= 1
+#             last += 1
+#             if last == end:
+#                 last = ring
+#             last.value = ai
+#             last.death = i0 + window
+#         if count >= minp:
+#             y[i0] = minpair.value
+#         else:
+#             y[i0] = NaN
+#
+#     for i0 in range(minp - 1):
+#         y[i0] = NaN
+#
+#     stdlib.free(ring)
+#     return y
 
 def roll_max(ndarray input, int win, int minp):
     '''
