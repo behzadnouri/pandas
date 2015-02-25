@@ -107,7 +107,7 @@ cpdef map_indices_list(list index):
 from libc.stdlib cimport malloc, free
 
 
-def ismember_nans(float64_t[:] arr, set values, bint hasnans):
+def ismember_nans(ndarray[float64_t, ndim=1] arr, set values, bint hasnans):
     cdef:
         Py_ssize_t i, n
         ndarray[uint8_t] result

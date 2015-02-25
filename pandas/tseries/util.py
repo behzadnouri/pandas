@@ -65,7 +65,7 @@ def pivot_annual(series, freq=None):
         grouped = series.groupby(series.index.year)
         defaulted = grouped.apply(lambda x: x.reset_index(drop=True))
         defaulted.index = defaulted.index.droplevel(0)
-        offset = np.asarray(defaulted.index)
+        offset = np.asarray(defaulted.index).copy()
         offset[~isleapyear(year) & (offset >= 1416)] += 24
         columns = lrange(1, 8785)
     else:

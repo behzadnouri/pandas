@@ -46,7 +46,7 @@ class TestPivotAnnual(tm.TestCase):
 
         grouped = ts_hourly.groupby(ts_hourly.index.year)
         hoy = grouped.apply(lambda x: x.reset_index(drop=True))
-        hoy = hoy.index.droplevel(0).values
+        hoy = hoy.index.droplevel(0).values.copy()
         hoy[~isleapyear(ts_hourly.index.year) & (hoy >= 1416)] += 24
         hoy += 1
 

@@ -1532,10 +1532,6 @@ class TestInt64Index(Numeric, tm.TestCase):
         arr = self.index.values
         new_index = Int64Index(arr, copy=True)
         self.assert_numpy_array_equal(new_index, self.index)
-        val = arr[0] + 3000
-        # this should not change index
-        arr[0] = val
-        self.assertNotEqual(new_index[0], val)
 
     def test_constructor_corner(self):
         arr = np.array([1, 2, 3, 4], dtype=object)
@@ -2463,7 +2459,7 @@ class TestMultiIndex(Base, tm.TestCase):
         # ditto for labels
         with assertRaisesRegexp(TypeError, mutable_regex):
             labels[0] = labels[0]
-        with assertRaisesRegexp(TypeError, mutable_regex):
+        with assertRaisesRegexp(ValueError, 'read-only'):
             labels[0][0] = labels[0][0]
         # and for names
         names = self.index.names

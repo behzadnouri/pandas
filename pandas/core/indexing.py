@@ -1018,7 +1018,7 @@ class _NDFrameIndexer(object):
                     else:
 
                         # need to retake to have the same size as the indexer
-                        rindexer = indexer.values
+                        rindexer = indexer.values.copy()
                         rindexer[~check] = 0
                         result = self.obj.take(rindexer, axis=axis,
                                                convert=False)
@@ -1692,13 +1692,11 @@ def maybe_convert_indices(indices, n):
             # errors.
             return np.empty(0, dtype=np.int_)
 
-    mask = indices < 0
-    if mask.any():
-        indices[mask] += n
-    mask = (indices >= n) | (indices < 0)
-    if mask.any():
+    if not (indices < n).all() or not (-n < indices).all():
         raise IndexError("indices are out-of-bounds")
-    return indices
+
+    mask = indices < 0
+    return indices if not mask.any() else indices + mask * n
 
 
 def maybe_convert_ix(*args):

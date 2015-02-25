@@ -370,7 +370,7 @@ class TestIndexOps(Ops):
         for null_obj in [np.nan, None]:
             for o in self.objs:
                 klass = type(o)
-                values = o.values
+                values = o.values.copy()
 
                 if isinstance(o,Index) and o.is_boolean():
                     # don't test boolean
@@ -390,7 +390,7 @@ class TestIndexOps(Ops):
                 # create repeated values, 'n'th element is repeated by n+1 times
                 if isinstance(o, PeriodIndex):
                     # freq must be specified because repeat makes freq ambiguous
-                    expected_index = o
+                    expected_index = klass(values, freq=o.freq)
                     o = klass(np.repeat(values, range(1, len(o) + 1)), freq=o.freq)
                 elif isinstance(o, Index):
                     expected_index = values

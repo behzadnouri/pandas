@@ -5814,7 +5814,8 @@ class TestSeries(tm.TestCase, CheckNameIntegration):
         # __array_interface__ is not defined for older numpies
         # and on some pythons
         try:
-            self.assertTrue(np.may_share_memory(self.series.index, identity.index))
+            a, b = map(np.asarray, (self.series.index, identity.index))
+            self.assertTrue(np.may_share_memory(a, b))
         except (AttributeError):
             pass
 

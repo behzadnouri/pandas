@@ -95,7 +95,7 @@ def take_1d_%(name)s_%(dest)s(ndarray[%(c_type_in)s] values,
 
 take_2d_axis0_template = """@cython.wraparound(False)
 @cython.boundscheck(False)
-def take_2d_axis0_%(name)s_%(dest)s(%(c_type_in)s[:, :] values,
+def take_2d_axis0_%(name)s_%(dest)s(ndarray[%(c_type_in)s, ndim=2] values,
                                     ndarray[int64_t] indexer,
                                     %(c_type_out)s[:, :] out,
                                     fill_value=np.nan):
@@ -142,7 +142,7 @@ def take_2d_axis0_%(name)s_%(dest)s(%(c_type_in)s[:, :] values,
 
 take_2d_axis1_template = """@cython.wraparound(False)
 @cython.boundscheck(False)
-def take_2d_axis1_%(name)s_%(dest)s(%(c_type_in)s[:, :] values,
+def take_2d_axis1_%(name)s_%(dest)s(ndarray[%(c_type_in)s, ndim=2] values,
                                     ndarray[int64_t] indexer,
                                     %(c_type_out)s[:, :] out,
                                     fill_value=np.nan):

@@ -2704,7 +2704,7 @@ def take_1d_object_object(ndarray[object] values,
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-def take_2d_axis0_bool_bool(uint8_t[:, :] values,
+def take_2d_axis0_bool_bool(ndarray[uint8_t, ndim=2] values,
                                     ndarray[int64_t] indexer,
                                     uint8_t[:, :] out,
                                     fill_value=np.nan):
@@ -2749,7 +2749,7 @@ def take_2d_axis0_bool_bool(uint8_t[:, :] values,
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-def take_2d_axis0_bool_object(uint8_t[:, :] values,
+def take_2d_axis0_bool_object(ndarray[uint8_t, ndim=2] values,
                                     ndarray[int64_t] indexer,
                                     object[:, :] out,
                                     fill_value=np.nan):
@@ -2794,7 +2794,7 @@ def take_2d_axis0_bool_object(uint8_t[:, :] values,
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-def take_2d_axis0_int8_int8(int8_t[:, :] values,
+def take_2d_axis0_int8_int8(ndarray[int8_t, ndim=2] values,
                                     ndarray[int64_t] indexer,
                                     int8_t[:, :] out,
                                     fill_value=np.nan):
@@ -2839,7 +2839,7 @@ def take_2d_axis0_int8_int8(int8_t[:, :] values,
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-def take_2d_axis0_int8_int32(int8_t[:, :] values,
+def take_2d_axis0_int8_int32(ndarray[int8_t, ndim=2] values,
                                     ndarray[int64_t] indexer,
                                     int32_t[:, :] out,
                                     fill_value=np.nan):
@@ -2884,7 +2884,7 @@ def take_2d_axis0_int8_int32(int8_t[:, :] values,
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-def take_2d_axis0_int8_int64(int8_t[:, :] values,
+def take_2d_axis0_int8_int64(ndarray[int8_t, ndim=2] values,
                                     ndarray[int64_t] indexer,
                                     int64_t[:, :] out,
                                     fill_value=np.nan):
@@ -2929,7 +2929,7 @@ def take_2d_axis0_int8_int64(int8_t[:, :] values,
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-def take_2d_axis0_int8_float64(int8_t[:, :] values,
+def take_2d_axis0_int8_float64(ndarray[int8_t, ndim=2] values,
                                     ndarray[int64_t] indexer,
                                     float64_t[:, :] out,
                                     fill_value=np.nan):
@@ -2974,7 +2974,7 @@ def take_2d_axis0_int8_float64(int8_t[:, :] values,
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-def take_2d_axis0_int16_int16(int16_t[:, :] values,
+def take_2d_axis0_int16_int16(ndarray[int16_t, ndim=2] values,
                                     ndarray[int64_t] indexer,
                                     int16_t[:, :] out,
                                     fill_value=np.nan):
@@ -3019,7 +3019,7 @@ def take_2d_axis0_int16_int16(int16_t[:, :] values,
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-def take_2d_axis0_int16_int32(int16_t[:, :] values,
+def take_2d_axis0_int16_int32(ndarray[int16_t, ndim=2] values,
                                     ndarray[int64_t] indexer,
                                     int32_t[:, :] out,
                                     fill_value=np.nan):
@@ -3064,7 +3064,7 @@ def take_2d_axis0_int16_int32(int16_t[:, :] values,
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-def take_2d_axis0_int16_int64(int16_t[:, :] values,
+def take_2d_axis0_int16_int64(ndarray[int16_t, ndim=2] values,
                                     ndarray[int64_t] indexer,
                                     int64_t[:, :] out,
                                     fill_value=np.nan):
@@ -3109,7 +3109,7 @@ def take_2d_axis0_int16_int64(int16_t[:, :] values,
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-def take_2d_axis0_int16_float64(int16_t[:, :] values,
+def take_2d_axis0_int16_float64(ndarray[int16_t, ndim=2] values,
                                     ndarray[int64_t] indexer,
                                     float64_t[:, :] out,
                                     fill_value=np.nan):
@@ -3154,7 +3154,7 @@ def take_2d_axis0_int16_float64(int16_t[:, :] values,
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-def take_2d_axis0_int32_int32(int32_t[:, :] values,
+def take_2d_axis0_int32_int32(ndarray[int32_t, ndim=2] values,
                                     ndarray[int64_t] indexer,
                                     int32_t[:, :] out,
                                     fill_value=np.nan):
@@ -3199,7 +3199,7 @@ def take_2d_axis0_int32_int32(int32_t[:, :] values,
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-def take_2d_axis0_int32_int64(int32_t[:, :] values,
+def take_2d_axis0_int32_int64(ndarray[int32_t, ndim=2] values,
                                     ndarray[int64_t] indexer,
                                     int64_t[:, :] out,
                                     fill_value=np.nan):
@@ -3244,7 +3244,7 @@ def take_2d_axis0_int32_int64(int32_t[:, :] values,
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-def take_2d_axis0_int32_float64(int32_t[:, :] values,
+def take_2d_axis0_int32_float64(ndarray[int32_t, ndim=2] values,
                                     ndarray[int64_t] indexer,
                                     float64_t[:, :] out,
                                     fill_value=np.nan):
@@ -3289,7 +3289,7 @@ def take_2d_axis0_int32_float64(int32_t[:, :] values,
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-def take_2d_axis0_int64_int64(int64_t[:, :] values,
+def take_2d_axis0_int64_int64(ndarray[int64_t, ndim=2] values,
                                     ndarray[int64_t] indexer,
                                     int64_t[:, :] out,
                                     fill_value=np.nan):
@@ -3334,7 +3334,7 @@ def take_2d_axis0_int64_int64(int64_t[:, :] values,
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-def take_2d_axis0_int64_float64(int64_t[:, :] values,
+def take_2d_axis0_int64_float64(ndarray[int64_t, ndim=2] values,
                                     ndarray[int64_t] indexer,
                                     float64_t[:, :] out,
                                     fill_value=np.nan):
@@ -3379,7 +3379,7 @@ def take_2d_axis0_int64_float64(int64_t[:, :] values,
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-def take_2d_axis0_float32_float32(float32_t[:, :] values,
+def take_2d_axis0_float32_float32(ndarray[float32_t, ndim=2] values,
                                     ndarray[int64_t] indexer,
                                     float32_t[:, :] out,
                                     fill_value=np.nan):
@@ -3424,7 +3424,7 @@ def take_2d_axis0_float32_float32(float32_t[:, :] values,
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-def take_2d_axis0_float32_float64(float32_t[:, :] values,
+def take_2d_axis0_float32_float64(ndarray[float32_t, ndim=2] values,
                                     ndarray[int64_t] indexer,
                                     float64_t[:, :] out,
                                     fill_value=np.nan):
@@ -3469,7 +3469,7 @@ def take_2d_axis0_float32_float64(float32_t[:, :] values,
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-def take_2d_axis0_float64_float64(float64_t[:, :] values,
+def take_2d_axis0_float64_float64(ndarray[float64_t, ndim=2] values,
                                     ndarray[int64_t] indexer,
                                     float64_t[:, :] out,
                                     fill_value=np.nan):
@@ -3514,7 +3514,7 @@ def take_2d_axis0_float64_float64(float64_t[:, :] values,
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-def take_2d_axis0_object_object(object[:, :] values,
+def take_2d_axis0_object_object(ndarray[object, ndim=2] values,
                                     ndarray[int64_t] indexer,
                                     object[:, :] out,
                                     fill_value=np.nan):
@@ -3560,7 +3560,7 @@ def take_2d_axis0_object_object(object[:, :] values,
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-def take_2d_axis1_bool_bool(uint8_t[:, :] values,
+def take_2d_axis1_bool_bool(ndarray[uint8_t, ndim=2] values,
                                     ndarray[int64_t] indexer,
                                     uint8_t[:, :] out,
                                     fill_value=np.nan):
@@ -3586,7 +3586,7 @@ def take_2d_axis1_bool_bool(uint8_t[:, :] values,
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-def take_2d_axis1_bool_object(uint8_t[:, :] values,
+def take_2d_axis1_bool_object(ndarray[uint8_t, ndim=2] values,
                                     ndarray[int64_t] indexer,
                                     object[:, :] out,
                                     fill_value=np.nan):
@@ -3612,7 +3612,7 @@ def take_2d_axis1_bool_object(uint8_t[:, :] values,
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-def take_2d_axis1_int8_int8(int8_t[:, :] values,
+def take_2d_axis1_int8_int8(ndarray[int8_t, ndim=2] values,
                                     ndarray[int64_t] indexer,
                                     int8_t[:, :] out,
                                     fill_value=np.nan):
@@ -3638,7 +3638,7 @@ def take_2d_axis1_int8_int8(int8_t[:, :] values,
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-def take_2d_axis1_int8_int32(int8_t[:, :] values,
+def take_2d_axis1_int8_int32(ndarray[int8_t, ndim=2] values,
                                     ndarray[int64_t] indexer,
                                     int32_t[:, :] out,
                                     fill_value=np.nan):
@@ -3664,7 +3664,7 @@ def take_2d_axis1_int8_int32(int8_t[:, :] values,
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-def take_2d_axis1_int8_int64(int8_t[:, :] values,
+def take_2d_axis1_int8_int64(ndarray[int8_t, ndim=2] values,
                                     ndarray[int64_t] indexer,
                                     int64_t[:, :] out,
                                     fill_value=np.nan):
@@ -3690,7 +3690,7 @@ def take_2d_axis1_int8_int64(int8_t[:, :] values,
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-def take_2d_axis1_int8_float64(int8_t[:, :] values,
+def take_2d_axis1_int8_float64(ndarray[int8_t, ndim=2] values,
                                     ndarray[int64_t] indexer,
                                     float64_t[:, :] out,
                                     fill_value=np.nan):
@@ -3716,7 +3716,7 @@ def take_2d_axis1_int8_float64(int8_t[:, :] values,
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-def take_2d_axis1_int16_int16(int16_t[:, :] values,
+def take_2d_axis1_int16_int16(ndarray[int16_t, ndim=2] values,
                                     ndarray[int64_t] indexer,
                                     int16_t[:, :] out,
                                     fill_value=np.nan):
@@ -3742,7 +3742,7 @@ def take_2d_axis1_int16_int16(int16_t[:, :] values,
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-def take_2d_axis1_int16_int32(int16_t[:, :] values,
+def take_2d_axis1_int16_int32(ndarray[int16_t, ndim=2] values,
                                     ndarray[int64_t] indexer,
                                     int32_t[:, :] out,
                                     fill_value=np.nan):
@@ -3768,7 +3768,7 @@ def take_2d_axis1_int16_int32(int16_t[:, :] values,
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-def take_2d_axis1_int16_int64(int16_t[:, :] values,
+def take_2d_axis1_int16_int64(ndarray[int16_t, ndim=2] values,
                                     ndarray[int64_t] indexer,
                                     int64_t[:, :] out,
                                     fill_value=np.nan):
@@ -3794,7 +3794,7 @@ def take_2d_axis1_int16_int64(int16_t[:, :] values,
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-def take_2d_axis1_int16_float64(int16_t[:, :] values,
+def take_2d_axis1_int16_float64(ndarray[int16_t, ndim=2] values,
                                     ndarray[int64_t] indexer,
                                     float64_t[:, :] out,
                                     fill_value=np.nan):
@@ -3820,7 +3820,7 @@ def take_2d_axis1_int16_float64(int16_t[:, :] values,
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-def take_2d_axis1_int32_int32(int32_t[:, :] values,
+def take_2d_axis1_int32_int32(ndarray[int32_t, ndim=2] values,
                                     ndarray[int64_t] indexer,
                                     int32_t[:, :] out,
                                     fill_value=np.nan):
@@ -3846,7 +3846,7 @@ def take_2d_axis1_int32_int32(int32_t[:, :] values,
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-def take_2d_axis1_int32_int64(int32_t[:, :] values,
+def take_2d_axis1_int32_int64(ndarray[int32_t, ndim=2] values,
                                     ndarray[int64_t] indexer,
                                     int64_t[:, :] out,
                                     fill_value=np.nan):
@@ -3872,7 +3872,7 @@ def take_2d_axis1_int32_int64(int32_t[:, :] values,
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-def take_2d_axis1_int32_float64(int32_t[:, :] values,
+def take_2d_axis1_int32_float64(ndarray[int32_t, ndim=2] values,
                                     ndarray[int64_t] indexer,
                                     float64_t[:, :] out,
                                     fill_value=np.nan):
@@ -3898,7 +3898,7 @@ def take_2d_axis1_int32_float64(int32_t[:, :] values,
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-def take_2d_axis1_int64_int64(int64_t[:, :] values,
+def take_2d_axis1_int64_int64(ndarray[int64_t, ndim=2] values,
                                     ndarray[int64_t] indexer,
                                     int64_t[:, :] out,
                                     fill_value=np.nan):
@@ -3924,7 +3924,7 @@ def take_2d_axis1_int64_int64(int64_t[:, :] values,
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-def take_2d_axis1_int64_float64(int64_t[:, :] values,
+def take_2d_axis1_int64_float64(ndarray[int64_t, ndim=2] values,
                                     ndarray[int64_t] indexer,
                                     float64_t[:, :] out,
                                     fill_value=np.nan):
@@ -3950,7 +3950,7 @@ def take_2d_axis1_int64_float64(int64_t[:, :] values,
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-def take_2d_axis1_float32_float32(float32_t[:, :] values,
+def take_2d_axis1_float32_float32(ndarray[float32_t, ndim=2] values,
                                     ndarray[int64_t] indexer,
                                     float32_t[:, :] out,
                                     fill_value=np.nan):
@@ -3976,7 +3976,7 @@ def take_2d_axis1_float32_float32(float32_t[:, :] values,
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-def take_2d_axis1_float32_float64(float32_t[:, :] values,
+def take_2d_axis1_float32_float64(ndarray[float32_t, ndim=2] values,
                                     ndarray[int64_t] indexer,
                                     float64_t[:, :] out,
                                     fill_value=np.nan):
@@ -4002,7 +4002,7 @@ def take_2d_axis1_float32_float64(float32_t[:, :] values,
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-def take_2d_axis1_float64_float64(float64_t[:, :] values,
+def take_2d_axis1_float64_float64(ndarray[float64_t, ndim=2] values,
                                     ndarray[int64_t] indexer,
                                     float64_t[:, :] out,
                                     fill_value=np.nan):
@@ -4028,7 +4028,7 @@ def take_2d_axis1_float64_float64(float64_t[:, :] values,
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-def take_2d_axis1_object_object(object[:, :] values,
+def take_2d_axis1_object_object(ndarray[object, ndim=2] values,
                                     ndarray[int64_t] indexer,
                                     object[:, :] out,
                                     fill_value=np.nan):

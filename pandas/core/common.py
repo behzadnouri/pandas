@@ -1710,12 +1710,8 @@ def _interpolate_scipy_wrapper(x, y, new_x, method, fill_value=None,
     else:
         # GH 7295: need to be able to write for some reason
         # in some circumstances: check all three
-        if not x.flags.writeable:
-            x = x.copy()
-        if not y.flags.writeable:
-            y = y.copy()
-        if not new_x.flags.writeable:
-            new_x = new_x.copy()
+        wcopy = lambda a: a if a.flags.writeable else np.asarray(a).copy()
+        x, y, new_x = map(wcopy, (x, y, new_x))
         method = alt_methods[method]
         new_y = method(x, y, new_x)
     return new_y

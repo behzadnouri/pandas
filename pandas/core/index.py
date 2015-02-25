@@ -13,7 +13,7 @@ import pandas.lib as lib
 import pandas.algos as _algos
 import pandas.index as _index
 from pandas.lib import Timestamp, Timedelta, is_datetime_array
-from pandas.core.base import PandasObject, FrozenList, FrozenNDArray, IndexOpsMixin, _shared_docs
+from pandas.core.base import PandasObject, FrozenList, IndexOpsMixin, _shared_docs
 from pandas.util.decorators import (Appender, Substitution, cache_readonly,
                                     deprecate)
 from pandas.core.common import isnull, array_equivalent
@@ -218,7 +218,8 @@ class Index(IndexOpsMixin, PandasObject):
     @classmethod
     def _simple_new(cls, values, name=None, **kwargs):
         result = object.__new__(cls)
-        result._data = values
+        result._data = np.asarray(values)
+        result._data.setflags(write=False)
         result.name = name
         for k, v in compat.iteritems(kwargs):
             setattr(result,k,v)
@@ -261,7 +262,7 @@ class Index(IndexOpsMixin, PandasObject):
 
     def __array__(self, result=None):
         """ the array interface, return my values """
-        return self._data.view(np.ndarray)
+        return self._data
 
     def __array_wrap__(self, result, context=None):
         """
@@ -2992,13 +2993,13 @@ class MultiIndex(Index):
             raise ValueError('Length of labels must match length of levels.')
 
         if level is None:
-            new_labels = FrozenList(_ensure_frozen(lab, lev, copy=copy)._shallow_copy()
+            new_labels = FrozenList(_ensure_frozen(lab, lev, copy=copy).view()
                                     for lev, lab in zip(self.levels, labels))
         else:
             level = [self._get_level_number(l) for l in level]
             new_labels = list(self._labels)
             for l, lev, lab in zip(level, self.levels, labels):
-                new_labels[l] = _ensure_frozen(lab, lev, copy=copy)._shallow_copy()
+                new_labels[l] = _ensure_frozen(lab, lev, copy=copy).view()
             new_labels = FrozenList(new_labels)
 
         self._labels = new_labels
@@ -4844,9 +4845,10 @@ def _ensure_index(index_like, copy=False):
 
 def _ensure_frozen(array_like, categories, copy=False):
     array_like = com._coerce_indexer_dtype(array_like, categories)
-    array_like = array_like.view(FrozenNDArray)
     if copy:
         array_like = array_like.copy()
+
+    array_like.setflags(write=False)
     return array_like
 
 
