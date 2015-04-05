@@ -331,6 +331,16 @@ class TestPandasContainer(tm.TestCase):
         self.assertTrue(df._is_mixed_type)
         assert_frame_equal(read_json(df.to_json()), df)
 
+    def test_numpy_scalar(self): # GH9576
+        jdumps = pd.json.dumps
+        self.assert_equal(jdumps(2.718), jdumps(np.array(2.718)))
+        self.assert_equal(jdumps(27182), jdumps(np.array(27182)))
+
+        for xs in np.linspace(0, 1, 21), range(5), np.arange(5, dtype='i8'):
+            a, b = Series(xs), Series(map(np.array, xs))
+            self.assertTrue(isinstance(b[1], np.ndarray))
+            self.assert_equal(a.to_json(), b.to_json())
+
     def test_v12_compat(self):
         df = DataFrame(
             [[1.56808523,  0.65727391,  1.81021139, -0.17251653],

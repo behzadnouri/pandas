@@ -1858,7 +1858,7 @@ void Object_beginTypeContext (JSOBJ _obj, JSONTypeContext *tc)
   }
   tc->prv = pc;
 
-  if (PyIter_Check(obj) || PyArray_Check(obj))
+  if (PyIter_Check(obj) || (PyArray_Check(obj) && ! PyArray_CheckScalar(obj)))
   {
     PRINTMARK();
     goto ISITERABLE;
@@ -1882,7 +1882,11 @@ void Object_beginTypeContext (JSOBJ _obj, JSONTypeContext *tc)
     return;
   }
   else
+#if PY_MAJOR_VERSION < 3
+  if (PyInt_Check(obj) && ! PyArray_IsScalar(obj, Integer))
+#else
   if (PyInt_Check(obj))
+#endif
   {
       PRINTMARK();
 
@@ -2058,6 +2062,19 @@ void Object_beginTypeContext (JSOBJ _obj, JSONTypeContext *tc)
   {
     PRINTMARK();
     pc->PyTypeToJSON = NpyFloatToDOUBLE; tc->type = JT_DOUBLE;
+    return;
+  }
+  else
+  if (PyArray_IsZeroDim(obj))
+  {
+    PyObject_Free(tc->prv);
+    tc->prv = NULL;
+
+    PyObject * item = PyArray_ToScalar(PyArray_DATA((PyArrayObject *)obj),
+            (PyArrayObject *)obj);
+
+    Object_beginTypeContext((JSOBJ) item, tc);
+    Py_DECREF(item);
     return;
   }
 
