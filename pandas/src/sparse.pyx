@@ -269,7 +269,8 @@ cdef class BlockIndex(SparseIndex):
 
     cdef:
         object __weakref__ # need to be picklable
-        int32_t* locbuf, *lenbuf
+        int32_t *locbuf
+        int32_t *lenbuf
 
     def __init__(self, length, blocs, blengths):
 

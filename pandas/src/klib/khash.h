@@ -146,13 +146,10 @@ typedef khint32_t khint_t;
 typedef khint_t khiter_t;
 
 #define __ac_isempty(flag, i) ((flag[i>>5]>>(i&0x1fU))&1)
-#define __ac_isdel(flag, i) (0)
 #define __ac_iseither(flag, i) __ac_isempty(flag, i)
-#define __ac_set_isdel_false(flag, i) (0)
 #define __ac_set_isempty_false(flag, i) (flag[i>>5]&=~(1ul<<(i&0x1fU)))
 #define __ac_set_isempty_true(flag, i) (flag[i>>5]|=(1ul<<(i&0x1fU)))
 #define __ac_set_isboth_false(flag, i) __ac_set_isempty_false(flag, i)
-#define __ac_set_isdel_true(flag, i) (0)
 
 #ifdef KHASH_LINEAR
 #define __ac_inc(k, m) 1
@@ -181,7 +178,6 @@ static const double __ac_HASH_UPPER = 0.77;
 	extern khint_t kh_get_##name(const kh_##name##_t *h, khkey_t key); 	\
 	extern void kh_resize_##name(kh_##name##_t *h, khint_t new_n_buckets); \
 	extern khint_t kh_put_##name(kh_##name##_t *h, khkey_t key, int *ret); \
-	extern void kh_del_##name(kh_##name##_t *h, khint_t x);
 
 #define KHASH_INIT2(name, SCOPE, khkey_t, khval_t, kh_is_map, __hash_func, __hash_equal) \
 	typedef struct {													\
@@ -215,7 +211,7 @@ static const double __ac_HASH_UPPER = 0.77;
 			mask = h->n_buckets - 1;									\
 			k = __hash_func(key); i = k & mask;							\
 			inc = __ac_inc(k, mask); last = i; /* inc==1 for linear probing */ \
-			while (!__ac_isempty(h->flags, i) && (__ac_isdel(h->flags, i) || !__hash_equal(h->keys[i], key))) { \
+			while (!__ac_isempty(h->flags, i) && !__hash_equal(h->keys[i], key)) { \
 				i = (i + inc) & mask; 									\
 				if (i == last) return h->n_buckets;						\
 			}															\
@@ -291,8 +287,7 @@ static const double __ac_HASH_UPPER = 0.77;
 			if (__ac_isempty(h->flags, i)) x = i; /* for speed up */	\
 			else {														\
 				inc = __ac_inc(k, mask); last = i;						\
-				while (!__ac_isempty(h->flags, i) && (__ac_isdel(h->flags, i) || !__hash_equal(h->keys[i], key))) { \
-					if (__ac_isdel(h->flags, i)) site = i;				\
+				while (!__ac_isempty(h->flags, i) && !__hash_equal(h->keys[i], key)) { \
 					i = (i + inc) & mask; 								\
 					if (i == last) { x = site; break; }					\
 				}														\
@@ -307,21 +302,9 @@ static const double __ac_HASH_UPPER = 0.77;
 			__ac_set_isboth_false(h->flags, x);							\
 			++h->size; ++h->n_occupied;									\
 			*ret = 1;													\
-		} else if (__ac_isdel(h->flags, x)) { /* deleted */				\
-			h->keys[x] = key;											\
-			__ac_set_isboth_false(h->flags, x);							\
-			++h->size;													\
-			*ret = 2;													\
 		} else *ret = 0; /* Don't touch h->keys[x] if present and not deleted */ \
 		return x;														\
 	}																	\
-	SCOPE void kh_del_##name(kh_##name##_t *h, khint_t x)				\
-	{																	\
-		if (x != h->n_buckets && !__ac_iseither(h->flags, x)) {			\
-			__ac_set_isdel_true(h->flags, x);							\
-			--h->size;													\
-		}																\
-	}
 
 #define KHASH_INIT(name, khkey_t, khval_t, kh_is_map, __hash_func, __hash_equal) \
 	KHASH_INIT2(name, static PANDAS_INLINE, khkey_t, khval_t, kh_is_map, __hash_func, __hash_equal)
@@ -442,14 +425,6 @@ static PANDAS_INLINE khint_t __ac_Wang_hash(khint_t key)
   @return       Iterator to the found element, or kh_end(h) is the element is absent [khint_t]
  */
 #define kh_get(name, h, k) kh_get_##name(h, k)
-
-/*! @function
-  @abstract     Remove a key from the hash table.
-  @param  name  Name of the hash table [symbol]
-  @param  h     Pointer to the hash table [khash_t(name)*]
-  @param  k     Iterator to the element to be deleted [khint_t]
- */
-#define kh_del(name, h, k) kh_del_##name(h, k)
 
 /*! @function
   @abstract     Test whether a bucket contains data.

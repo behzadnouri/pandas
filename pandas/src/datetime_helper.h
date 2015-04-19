@@ -3,7 +3,7 @@
 #include "numpy/arrayscalars.h"
 #include <stdio.h>
 
-#if PY_MAJOR_VERSION >= 3
+#if !defined(PyInt_AS_LONG) && PY_MAJOR_VERSION >= 3
 #define PyInt_AS_LONG PyLong_AsLong
 #endif
 

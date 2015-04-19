@@ -29,7 +29,7 @@ typedef struct _file_source {
 
 #define FS(source) ((file_source *)source)
 
-#if !defined(_WIN32)
+#if !defined(HAVE_MMAP) && !defined(_WIN32)
 #define HAVE_MMAP
 #endif
 
@@ -82,4 +82,3 @@ void* buffer_file_bytes(void *source, size_t nbytes,
 
 void* buffer_rd_bytes(void *source, size_t nbytes,
                       size_t *bytes_read, int *status);
-

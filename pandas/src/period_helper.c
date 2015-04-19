@@ -30,8 +30,6 @@ static int floordiv(int x, int divisor) {
     }
 }
 
-static asfreq_info NULL_AF_INFO;
-
 /* Table with day offsets for each month (0-based, without and with leap) */
 static int month_offset[2][13] = {
     { 0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365 },
@@ -300,7 +298,7 @@ PANDAS_INLINE static int get_freq_group_index(int freq) {
     return freq/1000;
 }
 
-static int calc_conversion_factors_matrix_size() {
+static int calc_conversion_factors_matrix_size(void) {
     int matrix_size = 0;
     int index;
     for (index=0;; index++) {
@@ -310,7 +308,7 @@ static int calc_conversion_factors_matrix_size() {
         }
         matrix_size = max_value(matrix_size, period_value);
     }
-    return matrix_size + 1; 
+    return matrix_size + 1;
 }
 
 static void alloc_conversion_factors_matrix(int matrix_size) {
@@ -349,7 +347,7 @@ static npy_int64 calculate_conversion_factor(int start_value, int end_value) {
     return conversion_factor;
 }
 
-static void populate_conversion_factors_matrix() {
+static void populate_conversion_factors_matrix(void) {
     int row_index_index;
 	int row_value, row_index;
     int column_index_index;
@@ -373,7 +371,7 @@ static void populate_conversion_factors_matrix() {
     }
 }
 
-void initialize_daytime_conversion_factor_matrix() {
+void initialize_daytime_conversion_factor_matrix(void) {
     if (daytime_conversion_factor_matrix == NULL) {
         int matrix_size = calc_conversion_factors_matrix_size();
         alloc_conversion_factors_matrix(matrix_size);
@@ -455,7 +453,7 @@ static npy_int64 asfreq_DTtoA(npy_int64 ordinal, char relation, asfreq_info *af_
 
 static npy_int64 DtoQ_yq(npy_int64 ordinal, asfreq_info *af_info, int *year, int *quarter) {
     struct date_info dinfo;
-    if (dInfoCalc_SetFromAbsDate(&dinfo, ordinal + ORD_OFFSET, GREGORIAN_CALENDAR)) 
+    if (dInfoCalc_SetFromAbsDate(&dinfo, ordinal + ORD_OFFSET, GREGORIAN_CALENDAR))
         return INT_ERR_CODE;
     if (af_info->to_q_year_end != 12) {
         dinfo.month -= af_info->to_q_year_end;
@@ -634,7 +632,7 @@ static npy_int64 asfreq_MtoW(npy_int64 ordinal, char relation, asfreq_info *af_i
 
 static npy_int64 asfreq_MtoB(npy_int64 ordinal, char relation, asfreq_info *af_info) {
     struct date_info dinfo;
-    
+
     if (dInfoCalc_SetFromAbsDate(&dinfo,
                 asfreq_MtoDT(ordinal, relation, af_info) + ORD_OFFSET,
                 GREGORIAN_CALENDAR)) return INT_ERR_CODE;
@@ -792,26 +790,26 @@ void get_asfreq_info(int fromFreq, int toFreq, asfreq_info *af_info) {
 
     switch(fromGroup)
     {
-        case FR_WK: 
+        case FR_WK:
             af_info->from_week_end = calc_week_end(fromFreq, fromGroup);
             break;
-        case FR_ANN: 
+        case FR_ANN:
             af_info->from_a_year_end = calc_a_year_end(fromFreq, fromGroup);
             break;
-        case FR_QTR: 
+        case FR_QTR:
             af_info->from_q_year_end = calc_a_year_end(fromFreq, fromGroup);
             break;
     }
 
     switch(toGroup)
     {
-        case FR_WK: 
+        case FR_WK:
             af_info->to_week_end = calc_week_end(toFreq, toGroup);
             break;
-        case FR_ANN: 
+        case FR_ANN:
             af_info->to_a_year_end = calc_a_year_end(toFreq, toGroup);
             break;
-        case FR_QTR: 
+        case FR_QTR:
             af_info->to_q_year_end = calc_a_year_end(toFreq, toGroup);
             break;
     }
@@ -835,9 +833,9 @@ freq_conv_func get_asfreq_func(int fromFreq, int toFreq)
                 case FR_MTH: return &asfreq_AtoM;
                 case FR_WK: return &asfreq_AtoW;
                 case FR_BUS: return &asfreq_AtoB;
-                case FR_DAY: 
-                case FR_HR: 
-                case FR_MIN: 
+                case FR_DAY:
+                case FR_HR:
+                case FR_MIN:
                 case FR_SEC:
                 case FR_MS:
                 case FR_US:
@@ -855,7 +853,7 @@ freq_conv_func get_asfreq_func(int fromFreq, int toFreq)
                 case FR_MTH: return &asfreq_QtoM;
                 case FR_WK: return &asfreq_QtoW;
                 case FR_BUS: return &asfreq_QtoB;
-                case FR_DAY: 
+                case FR_DAY:
                 case FR_HR:
                 case FR_MIN:
                 case FR_SEC:
@@ -893,10 +891,10 @@ freq_conv_func get_asfreq_func(int fromFreq, int toFreq)
                 case FR_MTH: return &asfreq_WtoM;
                 case FR_WK: return &asfreq_WtoW;
                 case FR_BUS: return &asfreq_WtoB;
-                case FR_DAY: 
-                case FR_HR: 
-                case FR_MIN: 
-                case FR_SEC: 
+                case FR_DAY:
+                case FR_HR:
+                case FR_MIN:
+                case FR_SEC:
                 case FR_MS:
                 case FR_US:
                 case FR_NS:
@@ -912,9 +910,9 @@ freq_conv_func get_asfreq_func(int fromFreq, int toFreq)
                 case FR_MTH: return &asfreq_BtoM;
                 case FR_WK: return &asfreq_BtoW;
                 case FR_BUS: return &no_op;
-                case FR_DAY: 
-                case FR_HR: 
-                case FR_MIN: 
+                case FR_DAY:
+                case FR_HR:
+                case FR_MIN:
                 case FR_SEC:
                 case FR_MS:
                 case FR_US:
@@ -937,7 +935,7 @@ freq_conv_func get_asfreq_func(int fromFreq, int toFreq)
                 case FR_MTH: return &asfreq_DTtoM;
                 case FR_WK: return &asfreq_DTtoW;
                 case FR_BUS: return &asfreq_DTtoB;
-                case FR_DAY: 
+                case FR_DAY:
                 case FR_HR:
                 case FR_MIN:
                 case FR_SEC:
@@ -1445,7 +1443,7 @@ int pdays_in_month(npy_int64 ordinal, int freq) {
     struct date_info dinfo;
     if(get_date_info(ordinal, freq, &dinfo) == INT_ERR_CODE)
         return INT_ERR_CODE;
-    
+
     days = days_in_month[dInfoCalc_Leapyear(dinfo.year, dinfo.calendar)][dinfo.month-1];
     return days;
 }

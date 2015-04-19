@@ -40,6 +40,8 @@ except ImportError:
 
 setuptools_kwargs = {}
 min_numpy_ver = '1.7.0'
+# numpy_nodepr_macro=('NPY_NO_DEPRECATED_API', 'NPY_1_6_API_VERSION')
+
 if sys.version_info[0] >= 3:
 
     setuptools_kwargs = {
@@ -504,6 +506,7 @@ for name, data in ext_data.items():
                     sources=sources,
                     depends=data.get('depends', []),
                     include_dirs=include)
+                    # define_macros=[numpy_nodepr_macro])
 
     extensions.append(obj)
 

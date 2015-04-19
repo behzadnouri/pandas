@@ -692,9 +692,9 @@ cdef class TextReader:
                            self.parser_start -= 1
                            this_header = [ None ] * lc
 
-                data_line = hr + 1
                 header.append(this_header)
 
+            data_line = hr + 1
             if self.names is not None:
                 header = [ self.names ]
 

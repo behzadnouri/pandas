@@ -650,12 +650,6 @@ cdef inline bint _cmp_nat_dt(_NaT lhs, _Timestamp rhs, int op) except -1:
     return _nat_scalar_rules[op]
 
 
-cdef _tz_format(object obj, object zone):
-    try:
-        return obj.strftime(' %%Z, tz=%s' % zone)
-    except:
-        return ', tz=%s' % zone
-
 def is_timestamp_array(ndarray[object] values):
     cdef int i, n = len(values)
     if n == 0:

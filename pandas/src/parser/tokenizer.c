@@ -2173,7 +2173,7 @@ double xstrtod(const char *str, char **endptr, char decimal,
     p++;
     num_digits++;
 
-    p += (tsep != '\0' & *p == tsep);
+    p += (tsep != '\0' && *p == tsep);
   }
 
   // Process decimal part
@@ -2340,7 +2340,7 @@ double precise_xstrtod(const char *str, char **endptr, char decimal,
             ++exponent;
 
         p++;
-        p += (tsep != '\0' & *p == tsep);
+        p += (tsep != '\0' && *p == tsep);
     }
 
     // Process decimal part
