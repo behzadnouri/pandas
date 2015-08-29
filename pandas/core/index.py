@@ -5036,9 +5036,40 @@ class MultiIndex(Index):
         -------
         (indexer, mask) : (ndarray, ndarray)
         """
-        method = com._clean_reindex_fill_method(method)
+        from pandas.algos import left_outer_join
+        from pandas.tools.merge import _factorize_keys, _get_join_keys
 
+        method = com._clean_reindex_fill_method(method)
         target = _ensure_index(target)
+
+        if method is None and isinstance(target, MultiIndex):
+            def lift(llab, rlab, lmask, rmask, count):
+                if lmask.any():
+                    llab[lmask] = count
+                    rlab[rmask] = count
+                    return count + 1
+
+                if rmask.any():
+                    rlab[rmask] = count
+                    return count + 1
+
+                return count
+
+            fkey = partial(_factorize_keys, sort=False)
+            llab, rlab, shape = zip(* map(fkey, target.levels, self.levels))
+
+            llab = list(map(np.take, llab, target.labels))
+            rlab = list(map(np.take, rlab, self.labels))
+
+            lmask = (l == -1 for l in target.labels)
+            rmask = (l == -1 for l in self.labels)
+
+            shape = list(map(lift, llab, rlab, lmask, rmask, shape))
+            lkey, rkey = _get_join_keys(llab, rlab, shape, sort=False)
+
+            lkey, rkey, count = fkey(lkey, rkey)
+            _, idx = left_outer_join(lkey, rkey, count, sort=False)
+            return idx
 
         target_index = target
         if isinstance(target, MultiIndex):
