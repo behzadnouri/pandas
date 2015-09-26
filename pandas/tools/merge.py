@@ -220,8 +220,8 @@ class _MergeOperation(object):
         return result
 
     def _indicator_pre_merge(self, left, right):
-                
-        columns = left.columns.union(right.columns)  
+
+        columns = left.columns.union(right.columns)
 
         for i in ['_left_indicator', '_right_indicator']:
             if i in columns:
@@ -232,12 +232,12 @@ class _MergeOperation(object):
         left = left.copy()
         right = right.copy()
 
-        left['_left_indicator'] = 1  
-        left['_left_indicator'] = left['_left_indicator'].astype('int8')  
-        
-        right['_right_indicator'] = 2     
-        right['_right_indicator'] = right['_right_indicator'].astype('int8') 
-        
+        left['_left_indicator'] = 1
+        left['_left_indicator'] = left['_left_indicator'].astype('int8')
+
+        right['_right_indicator'] = 2
+        right['_right_indicator'] = right['_right_indicator'].astype('int8')
+
         return left, right
 
     def _indicator_post_merge(self, result):
@@ -246,8 +246,8 @@ class _MergeOperation(object):
         result['_right_indicator'] = result['_right_indicator'].fillna(0)
 
         result[self.indicator_name] = Categorical((result['_left_indicator'] + result['_right_indicator']), categories=[1,2,3])
-        result[self.indicator_name] = result[self.indicator_name].cat.rename_categories(['left_only', 'right_only', 'both'])        
- 
+        result[self.indicator_name] = result[self.indicator_name].cat.rename_categories(['left_only', 'right_only', 'both'])
+
         result = result.drop(labels=['_left_indicator', '_right_indicator'], axis=1)
 
         return result
@@ -1128,8 +1128,11 @@ def _make_concat_multiindex(indexes, keys, levels=None, names=None):
                 try:
                     i = level.get_loc(key)
                 except KeyError:
-                    raise ValueError('Key %s not in level %s'
-                                     % (str(key), str(level)))
+                    if key != key:
+                        i = -1
+                    else:
+                        raise ValueError('Key %s not in level %s'
+                                         % (str(key), str(level)))
 
                 to_concat.append(np.repeat(i, len(index)))
             label_list.append(np.concatenate(to_concat))
@@ -1177,7 +1180,7 @@ def _make_concat_multiindex(indexes, keys, levels=None, names=None):
         mapped = level.get_indexer(hlevel)
 
         mask = mapped == -1
-        if mask.any():
+        if mask.any() and not isnull(hlevel[mask]).all():
             raise ValueError('Values not found in passed level: %s'
                              % str(hlevel[mask]))
 

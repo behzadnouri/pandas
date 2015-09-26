@@ -2043,9 +2043,9 @@ def group_labels(ndarray[object] values):
         val = values[i]
 
         # is NaN
-        if val != val:
-            labels[i] = -1
-            continue
+        # if val != val:
+        #     labels[i] = -1
+        #     continue
 
         # for large number of groups, not doing try: except: makes a big
         # difference

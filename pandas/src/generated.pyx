@@ -1954,7 +1954,7 @@ def is_monotonic_object(ndarray[object] arr, bint timelike):
     if timelike and arr[0] == iNaT:
         return False, False
 
-    
+
     prev = arr[0]
     for i in range(1, n):
         cur = arr[i]
@@ -2159,8 +2159,8 @@ def groupby_float64(ndarray[float64_t] index, ndarray labels):
     for i in range(length):
         key = util.get_value_1d(labels, i)
 
-        if is_null_datetimelike(key):
-            continue
+        # if is_null_datetimelike(key):
+        #     continue
 
         idx = index[i]
         if key in result:
@@ -2187,8 +2187,8 @@ def groupby_float32(ndarray[float32_t] index, ndarray labels):
     for i in range(length):
         key = util.get_value_1d(labels, i)
 
-        if is_null_datetimelike(key):
-            continue
+        # if is_null_datetimelike(key):
+        #     continue
 
         idx = index[i]
         if key in result:
@@ -2215,8 +2215,8 @@ def groupby_object(ndarray[object] index, ndarray labels):
     for i in range(length):
         key = util.get_value_1d(labels, i)
 
-        if is_null_datetimelike(key):
-            continue
+        # if is_null_datetimelike(key):
+        #     continue
 
         idx = index[i]
         if key in result:
@@ -2243,8 +2243,8 @@ def groupby_int32(ndarray[int32_t] index, ndarray labels):
     for i in range(length):
         key = util.get_value_1d(labels, i)
 
-        if is_null_datetimelike(key):
-            continue
+        # if is_null_datetimelike(key):
+        #     continue
 
         idx = index[i]
         if key in result:
@@ -2271,8 +2271,8 @@ def groupby_int64(ndarray[int64_t] index, ndarray labels):
     for i in range(length):
         key = util.get_value_1d(labels, i)
 
-        if is_null_datetimelike(key):
-            continue
+        # if is_null_datetimelike(key):
+        #     continue
 
         idx = index[i]
         if key in result:
@@ -2299,8 +2299,8 @@ def groupby_bool(ndarray[uint8_t] index, ndarray labels):
     for i in range(length):
         key = util.get_value_1d(labels, i)
 
-        if is_null_datetimelike(key):
-            continue
+        # if is_null_datetimelike(key):
+        #     continue
 
         idx = index[i]
         if key in result:
@@ -2441,7 +2441,7 @@ def take_1d_bool_object(uint8_t[:] values,
 
     fv = fill_value
 
-    
+
     for i from 0 <= i < n:
         idx = indexer[i]
         if idx == -1:
@@ -2464,7 +2464,7 @@ def take_1d_int8_int8(int8_t[:] values,
 
     fv = fill_value
 
-    
+
     for i from 0 <= i < n:
         idx = indexer[i]
         if idx == -1:
@@ -2832,7 +2832,7 @@ def take_1d_object_object(object[:] values,
 
     fv = fill_value
 
-    
+
     for i from 0 <= i < n:
         idx = indexer[i]
         if idx == -1:

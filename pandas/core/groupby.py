@@ -1312,11 +1312,11 @@ class BaseGrouper(object):
     def _get_group_keys(self):
         if len(self.groupings) == 1:
             return self.levels[0]
-        else:
-            comp_ids, _, ngroups = self.group_info
-            # provide "flattened" iterator for multi-group setting
-            mapper = _KeyMapper(comp_ids, ngroups, self.labels, self.levels)
-            return [mapper.get_key(i) for i in range(ngroups)]
+
+        comp_ids, _, ngroups = self.group_info
+        # provide "flattened" iterator for multi-group setting
+        mapper = _KeyMapper(comp_ids, ngroups, self.labels, self.levels)
+        return [mapper.get_key(i) for i in range(ngroups)]
 
     def apply(self, f, data, axis=0):
         mutated = False
@@ -1367,6 +1367,13 @@ class BaseGrouper(object):
 
     @property
     def levels(self):
+        from pandas.core.index import _get_na_value
+        if len(self.groupings) == 1:
+            out = self.groupings[0].group_index
+            if (self.groupings[0].labels == len(out)).any():
+                return [out.insert(len(out), _get_na_value(out.dtype.type))]
+            return [out]
+
         return [ping.group_index for ping in self.groupings]
 
     @property
@@ -1427,7 +1434,9 @@ class BaseGrouper(object):
                                           sort=True, xnull=True)
             return _compress_group_index(group_index, sort=self.sort)
 
+        return self.labels[0], np.arange(len(self.levels[0]))
         ping = self.groupings[0]
+
         return ping.labels, np.arange(len(ping.group_index))
 
     @cache_readonly
@@ -1443,11 +1452,22 @@ class BaseGrouper(object):
 
     @cache_readonly
     def result_index(self):
+        #this should be based on labels & levels
+        from pandas.core.index import _get_na_value
         if not self.compressed and len(self.groupings) == 1:
-            return self.groupings[0].group_index.rename(self.names[0])
+            out = self.groupings[0].group_index.rename(self.names[0])
+            if (self.groupings[0].labels == len(out)).any():
+                return out.insert(len(out), _get_na_value(out.dtype.type))
+            return out
 
-        return MultiIndex(levels=[ping.group_index for ping in self.groupings],
-                          labels=self.recons_labels,
+        levels = [ping.group_index for ping in self.groupings]
+        labels = self.recons_labels
+
+        for i in range(len(levels)):
+            labels[i][labels[i] == len(levels[i])] = -1
+
+        return MultiIndex(levels=levels,
+                          labels=labels,
                           verify_integrity=False,
                           names=self.names)
 
@@ -2027,6 +2047,7 @@ class Grouping(object):
 
     @property
     def ngroups(self):
+        return self.labels.max() + 1 if len(self.labels) != 0 else 0
         return len(self.group_index)
 
     @cache_readonly
@@ -2048,6 +2069,8 @@ class Grouping(object):
     def _make_labels(self):
         if self._labels is None or self._group_index is None:
             labels, uniques = algos.factorize(self.grouper, sort=self.sort)
+            mask = labels == -1
+            labels[mask] = len(uniques)
             uniques = Index(uniques, name=self.name)
             self._labels = labels
             self._group_index = uniques
@@ -2650,6 +2673,9 @@ class SeriesGroupBy(GroupBy):
         levels = [ping.group_index for ping in self.grouper.groupings] + [lev]
         names = self.grouper.names + [self.name]
 
+        for i in range(len(labels) - 1):
+            labels[i][labels[i] == len(levels[i])] = -1
+
         if dropna:
             mask = labels[-1] != -1
             if mask.all():
@@ -3005,9 +3031,9 @@ class NDFrameGroupBy(GroupBy):
                 key_index = MultiIndex.from_tuples(keys, names=key_names)
 
             else:
-                ping = self.grouper.groupings[0]
-                if len(keys) == ping.ngroups:
-                    key_index = ping.group_index
+                # ping = self.grouper.groupings[0]
+                if len(keys) == self.ngroups: # ping.ngroups:
+                    key_index = self.grouper.levels[0] # ping.group_index
                     key_index.name = key_names[0]
 
                     key_lookup = Index(keys)
@@ -3963,7 +3989,14 @@ class _KeyMapper(object):
             table.map(self.comp_ids, labs.astype(np.int64))
 
     def get_key(self, comp_id):
-        return tuple(level[table.get_item(comp_id)]
+        from pandas.core.index import _get_na_value
+        def lookup(level, table, comp_id):
+            i = table.get_item(comp_id)
+            return level[i] if i != len(level) \
+                    else _get_na_value(level.dtype.type)
+
+        # return tuple(level[table.get_item(comp_id)]
+        return tuple(lookup(level, table, comp_id)
                      for table, level in zip(self.tables, self.levels))
 
 

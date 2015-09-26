@@ -747,16 +747,19 @@ class TestGroupBy(tm.TestCase):
         # nothing to group, all NA
         grouped = self.ts.groupby(self.ts * np.nan)
 
-        assert_series_equal(grouped.sum(), Series([]))
-        assert_series_equal(grouped.agg(np.sum), Series([]))
-        assert_series_equal(grouped.apply(np.sum), Series([]))
+        right = Series([self.ts.sum()], index=[np.nan])
+        assert_series_equal(grouped.sum(), right)
+        assert_series_equal(grouped.agg(np.sum), right)
+        assert_series_equal(grouped.apply(np.sum), right)
 
         # DataFrame
         grouped = self.tsframe.groupby(self.tsframe['A'] * np.nan)
-        exp_df = DataFrame(columns=self.tsframe.columns, dtype=float)
-        assert_frame_equal(grouped.sum(), exp_df, check_names=False)
-        assert_frame_equal(grouped.agg(np.sum), exp_df, check_names=False)
-        assert_frame_equal(grouped.apply(np.sum), DataFrame({}, dtype=float))
+        right = DataFrame(self.tsframe.sum()).T
+        right.index = Index([np.nan], name='A')
+
+        assert_frame_equal(grouped.sum(), right)
+        assert_frame_equal(grouped.agg(np.sum), right)
+        assert_frame_equal(grouped.apply(np.sum), right)
 
     def test_agg_grouping_is_list_tuple(self):
         from pandas.core.groupby import Grouping
@@ -1116,7 +1119,7 @@ class TestGroupBy(tm.TestCase):
             # this SHOULD be an int
             grouped = values.groupby(labels)
             agged = grouped.agg(len)
-            expected = Series([4, 2], index=['bar', 'foo'])
+            expected = Series([4, 2, 4], index=['bar', 'foo', nan])
 
             assert_series_equal(agged, expected, check_dtype=False)
             #self.assertTrue(issubclass(agged.dtype.type, np.integer))
@@ -1126,7 +1129,7 @@ class TestGroupBy(tm.TestCase):
                 return float(len(x))
 
             agged = grouped.agg(f)
-            expected = Series([4, 2], index=['bar', 'foo'])
+            expected = Series([4, 2, 4], index=['bar', 'foo', nan])
 
             assert_series_equal(agged, expected, check_dtype=False)
             self.assertTrue(issubclass(agged.dtype.type, np.dtype(dtype).type))
@@ -2028,7 +2031,7 @@ class TestGroupBy(tm.TestCase):
             exp = {}
             for cat, group in grouped:
                 exp[cat] = op(group['C'])
-            exp = DataFrame({'C': exp})
+            exp = DataFrame({'C': exp.values()}, exp.keys())
             exp.index.name = 'A'
             result = op(grouped)
             assert_frame_equal(result, exp)
@@ -2950,10 +2953,10 @@ class TestGroupBy(tm.TestCase):
 
         # GH 6212
         expected = DataFrame({
-            'v1': [5,5,7,np.nan,3,3,4,1],
-            'v2': [55,55,77,np.nan,33,33,44,11]},
-            index=MultiIndex.from_tuples([(1,95),(1,99),(2,95),(2,99),('big','damp'),
-                                          ('blue','dry'),('red','red'),('red','wet')],
+            'v1': [5,5,7,np.nan,9,3,3,4,1,7.5],
+            'v2': [55,55,77,np.nan,99,33,33,44,11,82.5]},
+            index=MultiIndex.from_tuples([(1,95),(1,99),(2,95),(2,99),(12,np.nan),('big','damp'),
+                                          ('blue','dry'),('red','red'),('red','wet'),(np.nan, np.nan)],
                                          names=['by1','by2']))
 
         df = DataFrame({
@@ -3010,9 +3013,9 @@ class TestGroupBy(tm.TestCase):
                           np.nan, 'a', np.nan, 'b']})
         grouped = df.groupby('dt')
 
-        expected = [[1, 7], [3, 5]]
+        expected = [[0, 2, 4, 6], [1, 7], [3, 5]]
         keys = sorted(grouped.groups.keys())
-        self.assertEqual(len(keys), 2)
+        self.assertEqual(len(keys), 3)
         for k, e in zip(keys, expected):
             # grouped.groups keys are np.datetime64 with system tz
             # not to be affected by tz, only compare values
@@ -3020,16 +3023,17 @@ class TestGroupBy(tm.TestCase):
 
         # confirm obj is not filtered
         tm.assert_frame_equal(grouped.grouper.groupings[0].obj, df)
-        self.assertEqual(grouped.ngroups, 2)
-        expected = {Timestamp('2013-01-01 00:00:00'): np.array([1, 7]),
+        self.assertEqual(grouped.ngroups, 3)
+        expected = {Timestamp('NaT'): [0, 2, 4, 6],
+                    Timestamp('2013-01-01 00:00:00'): np.array([1, 7]),
                     Timestamp('2013-02-01 00:00:00'): np.array([3, 5])}
         for k in grouped.indices:
             self.assert_numpy_array_equal(grouped.indices[k], expected[k])
 
         tm.assert_frame_equal(grouped.get_group(Timestamp('2013-01-01')), df.iloc[[1, 7]])
         tm.assert_frame_equal(grouped.get_group(Timestamp('2013-02-01')), df.iloc[[3, 5]])
-
-        self.assertRaises(KeyError, grouped.get_group, pd.NaT)
+        tm.assert_frame_equal(grouped.get_group(Timestamp('NaT')),
+                              df.iloc[[0, 2, 4, 6]])
 
         nan_df = DataFrame({'nan': [np.nan, np.nan, np.nan],
                             'nat': [pd.NaT, pd.NaT, pd.NaT]})
